@@ -1,0 +1,22 @@
+jobs: 100  # max number of pending and running jobs
+latency-wait: 60  # seconds to wait after job finished (to account for file system latency)
+printshellcmds: True
+executor: cluster-generic
+cluster-generic-submit-cmd: sbatch
+     --nodes={resources.nodes}
+     --ntasks={resources.tasks}
+     --cpus-per-task={resources.cpus_per_task}
+     --mem-per-cpu={resources.mem_mb_per_cpu}
+     --time={resources.runtime}
+     --export=ALL
+     --partition={resources.partition}
+     --job-name={rule}-{wildcards}
+jobscript: jobscript_hydra.sbatch  
+default-resources:
+     - nodes=1
+     - tasks=1
+     - cpus_per_task=6
+     - mem_mb_per_cpu=4000
+     - runtime=4320
+     - disk_mb=100000
+     - partition=zen4,zen5_mpi
