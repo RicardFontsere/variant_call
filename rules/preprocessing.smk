@@ -10,7 +10,6 @@ rule trimmomatic:
     resources:
         cpus_per_task = 64
     params:
-        adapters = config["trimming_params"]["adapters"],
         slidingwindow = config["trimming_params"]["slidingwindow"],
         minlen = config["trimming_params"]["minlen"],
         leading = config["trimming_params"]["leading"],
@@ -28,7 +27,6 @@ rule trimmomatic:
             {input.r1} {input.r2} \
             {output.r1} {output.r1_unpaired} \
             {output.r2} {output.r2_unpaired} \
-            ILLUMINACLIP:{params.adapters}:2:30:10 \
             SLIDINGWINDOW:{params.slidingwindow} \
             LEADING:{params.leading} \
             TRAILING:{params.trailing} \
