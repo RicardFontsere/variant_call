@@ -1,28 +1,12 @@
-INPUT:
-  reads: "/user/brussel/109/vsc10945/home/scratch/data/reads/DNA/LC"
-  reference_genome: "/user/brussel/109/vsc10945/home/scratch/data/reference/LC/LC_genome"  # Path to reference genome file
-  reference_dir: "/user/brussel/109/vsc10945/home/scratch/data/reference/LC/"
-  chr_prefix: "CM"
+# Input/Output paths
+reads_dir: "/user/brussel/109/vsc10945/home/scratch/winpcapoolseq/variantcalling/reads"
+results_dir: "/user/brussel/109/vsc10945/home/scratch/winpcapoolseq/variantcalling/results"
+reference: "/user/brussel/109/vsc10945/home/scratch/data/reference/RT/RT_genome.fna"
 
-OUTPUT:
-  results: "/user/brussel/109/vsc10945/home/scratch/SexDetect/results/"
+# Trimmomatic parameters
+trimmomatic:
+  leading: 3
+  trailing: 3
+  slidingwindow: "4:20"
+  minlen: 36
 
-LOGS:
-  logs: "/user/brussel/109/vsc10945/home/scratch/SexDetect/logs/"
-
-trimming_params:
-  adapters: "/user/brussel/109/vsc10945/home/scratch/Snakemake/SexDetection/scripts/all_adapters.fa"
-  leading: "3"
-  trailing: "3"                              
-  slidingwindow: "4:20"                                         
-  minlen: "36"                                                  
-  threads: 40
-
-variant_calling:
-  min_base_qual: 30
-  min_map_qual: 20
-  threads: 40
-
-coverage_params:
-  window_size: 50000  
-  window_file_suffix: "windows50kb"
