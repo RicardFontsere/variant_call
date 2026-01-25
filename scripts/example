@@ -1,0 +1,2 @@
+python generate_intervals.py /user/brussel/109/vsc10945/home/scratch/data/reference/RT/RT_genome.fna.fai /user/brussel/109/vsc10945/home/scratch/data/reference/RT/RT_genome.dict /user/brussel/109/vsc10945/home/scratch/
+winpcapoolseq/variantcalling/intervals NC_ NW_

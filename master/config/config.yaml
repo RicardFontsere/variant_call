@@ -3,6 +3,11 @@ reads_dir: "/user/brussel/109/vsc10945/home/scratch/winpcapoolseq/variantcalling
 results_dir: "/user/brussel/109/vsc10945/home/scratch/winpcapoolseq/variantcalling/results"
 reference: "/user/brussel/109/vsc10945/home/scratch/data/reference/RT/RT_genome.fna"
 
+# Intervals for parallelization
+intervals_dir: "/user/brussel/109/vsc10945/home/scratch/winpcapoolseq/variantcalling/intervals"
+chromosome_prefix: "NC_"
+contig_prefix: "NW_"
+
 # Trimmomatic parameters
 trimmomatic:
   leading: 3

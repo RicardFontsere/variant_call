@@ -10,9 +10,17 @@ READS_DIR = config["reads_dir"]
 RESULTS_DIR = config["results_dir"]
 REFERENCE = config["reference"]
 REF_PREFIX = os.path.splitext(REFERENCE)[0]
+INTERVALS_DIR = config["intervals_dir"]
+CHROM_PREFIX = config["chromosome_prefix"]
+CONTIG_PREFIX = config["contig_prefix"]
 
 # Discover samples: subdirectories in READS_DIR
 SAMPLES = sorted([d for d in os.listdir(READS_DIR) if os.path.isdir(os.path.join(READS_DIR, d))])
+
+# Discover intervals from pre-generated interval files
+# Run scripts/generate_intervals.py manually before running the pipeline
+INTERVALS = [os.path.basename(f).replace(".interval_list", "") 
+             for f in glob.glob(os.path.join(INTERVALS_DIR, "*.interval_list"))]
 
 # =============================================================================
 # TARGET RULE
@@ -29,10 +37,7 @@ rule all:
         # Mapped and processed BAMs
         expand(os.path.join(RESULTS_DIR, "mapped", "{sample}.dedup.bam"), sample=SAMPLES),
         expand(os.path.join(RESULTS_DIR, "mapped", "{sample}.dedup.bam.csi"), sample=SAMPLES),
-        # Per-sample GVCFs
-        expand(os.path.join(RESULTS_DIR, "variants", "gvcf", "{sample}.g.vcf.gz"), sample=SAMPLES),
-        expand(os.path.join(RESULTS_DIR, "variants", "gvcf", "{sample}.g.vcf.gz.tbi"), sample=SAMPLES),
-        # Joint-called variants
+        # Final joint-called variants
         os.path.join(RESULTS_DIR, "variants", "raw.vcf.gz"),
         os.path.join(RESULTS_DIR, "variants", "raw.vcf.gz.tbi"),
         os.path.join(RESULTS_DIR, "variants", "filtered.vcf.gz"),
@@ -55,7 +60,6 @@ rule trimmomatic:
         minlen = config["trimmomatic"]["minlen"],
         leading = config["trimmomatic"]["leading"],
         trailing = config["trimmomatic"]["trailing"]
-    threads: 16
     resources:
         cpus_per_task=16,
         mem_mb_per_cpu=4000
@@ -68,7 +72,7 @@ rule trimmomatic:
         mkdir -p $(dirname {output.r1})
         mkdir -p $(dirname {output.r1_unpaired})
         mkdir -p $(dirname {log})
-        java -jar $EBROOTTRIMMOMATIC/trimmomatic-0.39.jar PE -threads {threads} -phred33 \
+        java -jar $EBROOTTRIMMOMATIC/trimmomatic-0.39.jar PE -threads {resources.cpus_per_task} -phred33 \
             {input.r1} {input.r2} \
             {output.r1} {output.r1_unpaired} \
             {output.r2} {output.r2_unpaired} \
@@ -196,7 +200,6 @@ rule index_bam:
         bam = os.path.join(RESULTS_DIR, "mapped", "{sample}.dedup.bam")
     output:
         bai = os.path.join(RESULTS_DIR, "mapped", "{sample}.dedup.bam.csi")
-    threads: 4
     resources:
         cpus_per_task=4,
         mem_mb_per_cpu=4000
@@ -206,31 +209,37 @@ rule index_bam:
         "SAMtools/1.18-GCC-12.3.0"
     shell:
         """
-        samtools index -c -@ {threads} {input.bam} 2> {log}
+        samtools index -c -@ {resources.cpus_per_task} {input.bam} 2> {log}
         """
 
 # =============================================================================
-# VARIANT CALLING WITH GATK (BEST PRACTICES)
-# Step 1: Call variants per sample, creates GVCFs
-# Step 2: Consolidate GVCFs with GenomicsDBImport
-# Step 3: Joint genotyping with GenotypeGVCFs
+# VARIANT CALLING WITH GATK - PARALLELIZED BY INTERVAL
+# 
+# Workflow:
+# 1. HaplotypeCaller per sample per interval -> per-sample per-interval GVCFs
+# 2. GenomicsDBImport per interval (combines all samples) -> per-interval GenomicsDB
+# 3. GenotypeGVCFs per interval -> per-interval VCFs
+# 4. MergeVcfs -> single raw.vcf.gz
+# 5. VariantFiltration -> filtered.vcf.gz
 # =============================================================================
 
-# Step 1: HaplotypeCaller per sample (produces GVCF)
-rule gatk_haplotypecaller_gvcf:
+# Step 1: HaplotypeCaller per sample per interval
+rule haplotypecaller_per_interval:
     input:
         bam = os.path.join(RESULTS_DIR, "mapped", "{sample}.dedup.bam"),
         bai = os.path.join(RESULTS_DIR, "mapped", "{sample}.dedup.bam.csi"),
         ref = REFERENCE,
         fai = REFERENCE + ".fai",
-        dict = REF_PREFIX + ".dict"
+        dict = REF_PREFIX + ".dict",
+        interval = os.path.join(INTERVALS_DIR, "{interval}.interval_list")
     output:
-        gvcf = os.path.join(RESULTS_DIR, "variants", "gvcf", "{sample}.g.vcf.gz")
+        gvcf = os.path.join(RESULTS_DIR, "variants", "gvcf", "per_interval", "{sample}", "{interval}.g.vcf.gz")
     resources:
-        cpus_per_task=20,
-        mem_mb_per_cpu=2000
+        cpus_per_task=2,
+        mem_mb_per_cpu=4000,
+        runtime=1440
     log:
-        os.path.join(RESULTS_DIR, "logs", "variants", "{sample}_haplotypecaller.log")
+        os.path.join(RESULTS_DIR, "logs", "variants", "haplotypecaller", "{sample}", "{interval}.log")
     envmodules:
         "GATK/4.5.0.0-GCCcore-12.3.0-Java-17"
     shell:
@@ -242,84 +251,123 @@ rule gatk_haplotypecaller_gvcf:
             -R {input.ref} \
             -I {input.bam} \
             -O {output.gvcf} \
+            -L {input.interval} \
             -ERC GVCF \
+            --create-output-variant-index false \
             --native-pair-hmm-threads {resources.cpus_per_task} 2> {log}
         """
 
-rule index_gvcf:
+# Step 1.1: Index GVCFs with CSI format
+rule index_gvcf_csi:
     input:
-        gvcf = os.path.join(RESULTS_DIR, "variants", "gvcf", "{sample}.g.vcf.gz")
+        gvcf = os.path.join(RESULTS_DIR, "variants", "gvcf", "per_interval", "{sample}", "{interval}.g.vcf.gz")
     output:
-        tbi = os.path.join(RESULTS_DIR, "variants", "gvcf", "{sample}.g.vcf.gz.tbi")
+        csi = os.path.join(RESULTS_DIR, "variants", "gvcf", "per_interval", "{sample}", "{interval}.g.vcf.gz.csi")
     log:
-        os.path.join(RESULTS_DIR, "logs", "variants", "{sample}_index_gvcf.log")
+        os.path.join(RESULTS_DIR, "logs", "variants", "index_gvcf", "{sample}", "{interval}.log")
     envmodules:
-        "GATK/4.5.0.0-GCCcore-12.3.0-Java-17"
+        "BCFtools/1.21-GCC-13.3.0"  # or whatever version you have
     shell:
         """
-        gatk IndexFeatureFile -I {input.gvcf} 2> {log}
+        mkdir -p $(dirname {log})
+        bcftools index --csi {input.gvcf} 2> {log}
+        echo "Index created: {output.csi}" >> {log}
         """
-
-# Step 2: Consolidate GVCFs into GenomicsDB
-rule genomics_db_import:
+        
+# Step 2: GenomicsDBImport per interval (combines all samples for that interval)
+rule genomicsdb_import_per_interval:
     input:
-        gvcfs = expand(os.path.join(RESULTS_DIR, "variants", "gvcf", "{sample}.g.vcf.gz"), sample=SAMPLES),
-        tbis = expand(os.path.join(RESULTS_DIR, "variants", "gvcf", "{sample}.g.vcf.gz.tbi"), sample=SAMPLES),
+        gvcfs = expand(
+            os.path.join(RESULTS_DIR, "variants", "gvcf", "per_interval", "{sample}", "{{interval}}.g.vcf.gz"),
+            sample=SAMPLES
+        ),
+        csis = expand(
+        os.path.join(RESULTS_DIR, "variants", "gvcf", "per_interval", "{sample}", "{{interval}}.g.vcf.gz.csi"),
+        sample=SAMPLES
+        ),
+        interval = os.path.join(INTERVALS_DIR, "{interval}.interval_list"),
         ref = REFERENCE,
         fai = REFERENCE + ".fai",
         dict = REF_PREFIX + ".dict"
     output:
-        db = directory(os.path.join(RESULTS_DIR, "variants", "genomicsdb"))
+        db = directory(os.path.join(RESULTS_DIR, "variants", "genomicsdb", "{interval}"))
     params:
-        gvcf_list = lambda wildcards, input: " ".join([f"-V {gvcf}" for gvcf in input.gvcfs]),
-        # Interval list: use all contigs from the reference dictionary
-        # For whole-genome, you may want to specify intervals for parallelization
-        interval_arg = lambda wildcards, input: f"--intervals {input.dict.replace('.dict', '.interval_list')}" if os.path.exists(input.dict.replace('.dict', '.interval_list')) else "--intervals " + input.fai
+        gvcf_args = lambda wildcards, input: " ".join([f"-V {g}" for g in input.gvcfs])
     resources:
-        cpus_per_task=8,
+        cpus_per_task=4,
         mem_mb_per_cpu=8000,
-        runtime=2880
+        runtime=1440
     log:
-        os.path.join(RESULTS_DIR, "logs", "variants", "genomicsdb_import.log")
+        os.path.join(RESULTS_DIR, "logs", "variants", "genomicsdb", "{interval}.log")
     envmodules:
         "GATK/4.5.0.0-GCCcore-12.3.0-Java-17"
     shell:
         """
+        mkdir -p $(dirname {output.db})
+        mkdir -p $(dirname {output.db})/tmp
         mkdir -p $(dirname {log})
-        # Create interval list from fai if not exists
-        INTERVAL_FILE={input.fai}
-        
         gatk GenomicsDBImport \
-            {params.gvcf_list} \
+            {params.gvcf_args} \
             --genomicsdb-workspace-path {output.db} \
-            --intervals $INTERVAL_FILE \
+            -L {input.interval} \
             --reader-threads {resources.cpus_per_task} \
             --batch-size 50 \
             --tmp-dir $(dirname {output.db})/tmp 2> {log}
         """
 
-# Step 3: Joint genotyping from GenomicsDB
-rule genotype_gvcfs:
+# Step 3: GenotypeGVCFs per interval
+rule genotype_gvcfs_per_interval:
     input:
-        db = os.path.join(RESULTS_DIR, "variants", "genomicsdb"),
+        db = os.path.join(RESULTS_DIR, "variants", "genomicsdb", "{interval}"),
         ref = REFERENCE,
         fai = REFERENCE + ".fai",
         dict = REF_PREFIX + ".dict"
     output:
-        vcf = os.path.join(RESULTS_DIR, "variants", "raw.vcf.gz")
+        vcf = os.path.join(RESULTS_DIR, "variants", "per_interval", "{interval}.vcf.gz"),
+        tbi = os.path.join(RESULTS_DIR, "variants", "per_interval", "{interval}.vcf.gz.tbi")
     resources:
-        cpus_per_task=8,
+        cpus_per_task=4,
         mem_mb_per_cpu=8000
     log:
-        os.path.join(RESULTS_DIR, "logs", "variants", "genotype_gvcfs.log")
+        os.path.join(RESULTS_DIR, "logs", "variants", "genotype", "{interval}.log")
     envmodules:
         "GATK/4.5.0.0-GCCcore-12.3.0-Java-17"
     shell:
         """
         mkdir -p $(dirname {output.vcf})
+        mkdir -p $(dirname {log})
         gatk GenotypeGVCFs \
             -R {input.ref} \
             -V gendb://{input.db} \
+            -O {output.vcf} 2> {log}
+        """
+
+# Step 4: Merge all per-interval VCFs into one raw VCF
+rule merge_vcfs:
+    input:
+        vcfs = expand(
+            os.path.join(RESULTS_DIR, "variants", "per_interval", "{interval}.vcf.gz"),
+            interval=INTERVALS
+        ),
+        dict = REF_PREFIX + ".dict"
+    output:
+        vcf = os.path.join(RESULTS_DIR, "variants", "raw.vcf.gz")
+    params:
+        vcf_args = lambda wildcards, input: " ".join([f"-I {v}" for v in input.vcfs])
+    resources:
+        cpus_per_task=4,
+        mem_mb_per_cpu=4000
+    log:
+        os.path.join(RESULTS_DIR, "logs", "variants", "merge_vcfs.log")
+    envmodules:
+        "GATK/4.5.0.0-GCCcore-12.3.0-Java-17"
+    shell:
+        """
+        mkdir -p $(dirname {output.vcf})
+        mkdir -p $(dirname {log})
+        gatk MergeVcfs \
+            {params.vcf_args} \
+            -D {input.dict} \
             -O {output.vcf} 2> {log}
         """
 
@@ -337,6 +385,7 @@ rule index_raw_vcf:
         gatk IndexFeatureFile -I {input.vcf} 2> {log}
         """
 
+# Step 5: Hard filtering
 rule variant_filtration:
     input:
         vcf = os.path.join(RESULTS_DIR, "variants", "raw.vcf.gz"),
