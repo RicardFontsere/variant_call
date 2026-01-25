@@ -28,7 +28,7 @@ rule all:
         expand(os.path.join(RESULTS_DIR, "trimmed", "{sample}_2.fq.gz"), sample=SAMPLES),
         # Mapped and processed BAMs
         expand(os.path.join(RESULTS_DIR, "mapped", "{sample}.dedup.bam"), sample=SAMPLES),
-        expand(os.path.join(RESULTS_DIR, "mapped", "{sample}.dedup.bam.bai"), sample=SAMPLES),
+        expand(os.path.join(RESULTS_DIR, "mapped", "{sample}.dedup.bam.csi"), sample=SAMPLES),
         # Per-sample GVCFs
         expand(os.path.join(RESULTS_DIR, "variants", "gvcf", "{sample}.g.vcf.gz"), sample=SAMPLES),
         expand(os.path.join(RESULTS_DIR, "variants", "gvcf", "{sample}.g.vcf.gz.tbi"), sample=SAMPLES),
@@ -176,7 +176,7 @@ rule mark_duplicates:
         metrics = os.path.join(RESULTS_DIR, "mapped", "metrics", "{sample}.dedup_metrics.txt")
     resources:
         cpus_per_task=8,
-        mem_mb_per_cpu=6000
+        mem_mb_per_cpu=2000
     log:
         os.path.join(RESULTS_DIR, "logs", "mapping", "{sample}_markdup.log")
     envmodules:
@@ -195,7 +195,7 @@ rule index_bam:
     input:
         bam = os.path.join(RESULTS_DIR, "mapped", "{sample}.dedup.bam")
     output:
-        bai = os.path.join(RESULTS_DIR, "mapped", "{sample}.dedup.bam.bai")
+        bai = os.path.join(RESULTS_DIR, "mapped", "{sample}.dedup.bam.csi")
     threads: 4
     resources:
         cpus_per_task=4,
@@ -206,7 +206,7 @@ rule index_bam:
         "SAMtools/1.18-GCC-12.3.0"
     shell:
         """
-        samtools index -@ {threads} {input.bam} 2> {log}
+        samtools index -c -@ {threads} {input.bam} 2> {log}
         """
 
 # =============================================================================
@@ -220,21 +220,22 @@ rule index_bam:
 rule gatk_haplotypecaller_gvcf:
     input:
         bam = os.path.join(RESULTS_DIR, "mapped", "{sample}.dedup.bam"),
-        bai = os.path.join(RESULTS_DIR, "mapped", "{sample}.dedup.bam.bai"),
+        bai = os.path.join(RESULTS_DIR, "mapped", "{sample}.dedup.bam.csi"),
         ref = REFERENCE,
         fai = REFERENCE + ".fai",
         dict = REF_PREFIX + ".dict"
     output:
         gvcf = os.path.join(RESULTS_DIR, "variants", "gvcf", "{sample}.g.vcf.gz")
     resources:
-        cpus_per_task=8,
-        mem_mb_per_cpu=8000
+        cpus_per_task=20,
+        mem_mb_per_cpu=2000
     log:
         os.path.join(RESULTS_DIR, "logs", "variants", "{sample}_haplotypecaller.log")
     envmodules:
         "GATK/4.5.0.0-GCCcore-12.3.0-Java-17"
     shell:
         """
+        export OMP_NUM_THREADS={resources.cpus_per_task}
         mkdir -p $(dirname {output.gvcf})
         mkdir -p $(dirname {log})
         gatk HaplotypeCaller \
