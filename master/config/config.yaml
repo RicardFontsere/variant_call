@@ -1,9 +1,9 @@
 # Input/Output paths
-reads_dir: "/user/brussel/109/vsc10945/home/scratch/data/reads/DNA/LC"
-results_dir: "/user/brussel/109/vsc10945/home/scratch/SexDetect/results/LC"
-reference: "/user/brussel/109/vsc10945/home/scratch/data/reference/LC/LC_genome.fna"
+reads_dir: "/user/brussel/109/vsc10945/home/scratch/data/reads/DNA/RL"
+results_dir: "/user/brussel/109/vsc10945/home/scratch/SexDetect/results/RL"
+reference: "/user/brussel/109/vsc10945/home/scratch/data/reference/RT/RT_genome.fna"
 
 # Intervals for parallelization
-chromosome_prefix: "CM"
-contig_prefix: "JA"
+chromosome_prefix: "NC"
+contig_prefix: "NW"
 

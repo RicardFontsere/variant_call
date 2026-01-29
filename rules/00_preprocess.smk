@@ -8,7 +8,7 @@ rule bwa_index:
     output:
         multiext(REF_PREFIX, ".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac")
     log:
-        os.path.join(RESULTS_DIR, "logs", "00_bwa_index.log")
+        os.path.join(RESULTS_DIR, "logs", "00_preprocess", "00_bwa_index.log")
     envmodules:
         "bwa-mem2/2.2.1-intel-compilers-2023.1.0"
     resources:
@@ -26,7 +26,7 @@ rule samtools_faidx:
     output:
         fai = REFERENCE + ".fai"
     log:
-        os.path.join(RESULTS_DIR, "logs", "00_samtools_faidx.log")
+        os.path.join(RESULTS_DIR, "logs", "00_preprocess", "00_samtools_faidx.log")
     envmodules:
         "SAMtools/1.18-GCC-12.3.0"
     shell:
@@ -41,7 +41,7 @@ rule sequence_dictionary:
     output:
         dict = REF_PREFIX + ".dict"
     log:
-        os.path.join(RESULTS_DIR, "logs", "00_sequence_dictionary.log")
+        os.path.join(RESULTS_DIR, "logs", "00_preprocess", "00_sequence_dictionary.log")
     envmodules:
         "GATK/4.5.0.0-GCCcore-12.3.0-Java-17"
     resources:
@@ -65,7 +65,7 @@ checkpoint generate_intervals:
         chrom_prefix = CHROM_PREFIX,
         contig_prefix = CONTIG_PREFIX
     log:
-        os.path.join(RESULTS_DIR, "logs", "00_generate_intervals.log")
+        os.path.join(RESULTS_DIR, "logs", "00_preprocess", "00_generate_intervals.log")
     shell:
         """
         mkdir -p $(dirname {log})

@@ -63,7 +63,7 @@ def get_read_file(sample, read_num):
 # =============================================================================
 # INCLUDE RULE MODULES
 # =============================================================================
-include: "rules/00_reference.smk"
+include: "rules/00_preprocess.smk"
 include: "rules/01_trimming.smk"
 include: "rules/02_alignment.smk"
 include: "rules/03_variant_calling.smk"
