@@ -1,4 +1,4 @@
-jobs: 100  # max number of pending and running jobs
+jobs: 400  # max number of pending and running jobs
 latency-wait: 60  # seconds to wait after job finished (to account for file system latency)
 printshellcmds: True
 executor: cluster-generic
