@@ -23,7 +23,7 @@ rule haplotypecaller:
     resources:
         cpus_per_task=2,
         mem_mb_per_cpu=4000,
-        runtime=720
+        runtime=2400
     log:
         os.path.join(RESULTS_DIR, "logs", "03_haplotypecaller", "{sample}.{interval}.log")
     envmodules:
@@ -91,7 +91,7 @@ rule genotype_gvcfs:
     resources:
         cpus_per_task=1,
         mem_mb_per_cpu=20000,
-        runtime=720
+        runtime=1000
     log:
         os.path.join(RESULTS_DIR, "logs", "03_genotype_gvcfs", "{interval}.log")
     envmodules:
@@ -194,6 +194,9 @@ rule index_vcf:
         idx = os.path.join(RESULTS_DIR, "03_variants", "filtered.vcf.idx")
     log:
         os.path.join(RESULTS_DIR, "logs", "03_index_vcf.log")
+    resources:
+        cpus_per_task=1,
+        mem_mb_per_cpu=4000
     envmodules:
         "GATK/4.5.0.0-GCCcore-12.3.0-Java-17"
     shell:

@@ -1,9 +1,8 @@
 # Input/Output paths
-reads_dir: "/user/brussel/109/vsc10945/home/scratch/data/reads/DNA/RL"
-results_dir: "/user/brussel/109/vsc10945/home/scratch/SexDetect/results/RL"
-reference: "/user/brussel/109/vsc10945/home/scratch/data/reference/RT/RT_genome.fna"
+reads_dir: "[Input Read Directory]"
+results_dir: "[Output Directory]"
+reference: "[Genome file path]"
 
 # Intervals for parallelization
-chromosome_prefix: "NC"
-contig_prefix: "NW"
-
+chromosome_prefix: "[Chromosome start pattern]"
+contig_prefix: "[Contig start pattern]"

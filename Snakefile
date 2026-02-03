@@ -39,10 +39,6 @@ def get_read_file(sample, read_num):
     Returns:
         Path to the read file
     """
-    if read_num not in ("1", "2"):
-        raise ValueError(f"read_num must be '1' or '2', got {read_num}")
-    
-    # Try common patterns for read files
     patterns = [
         f"*_R{read_num}.fastq.gz",
         f"*_R{read_num}.fq.gz",
@@ -67,6 +63,7 @@ include: "rules/00_preprocess.smk"
 include: "rules/01_trimming.smk"
 include: "rules/02_alignment.smk"
 include: "rules/03_variant_calling.smk"
+include: "rules/04_pca.smk"
 
 # =============================================================================
 # TARGET RULE
@@ -88,4 +85,7 @@ rule all:
         # Final joint-called variants
         os.path.join(RESULTS_DIR, "03_variants", "raw.vcf"),
         os.path.join(RESULTS_DIR, "03_variants", "filtered.vcf"),
-        os.path.join(RESULTS_DIR, "03_variants", "filtered.vcf.idx")
+        os.path.join(RESULTS_DIR, "03_variants", "filtered.vcf.idx"),
+        # PCA results
+        os.path.join(RESULTS_DIR, "04_pca", "pca_plot.png"),
+        os.path.join(RESULTS_DIR, "04_pca", "pca_variance.png")
