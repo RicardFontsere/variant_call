@@ -13,7 +13,7 @@ rule plink_prune:
     Uses sliding window of 50 SNPs, step size 10, r² threshold 0.1.
     """
     input:
-        vcf = os.path.join(RESULTS_DIR, "03_variants", "filtered.vcf")
+        vcf = os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf")
     output:
         prune_in = os.path.join(RESULTS_DIR, "04_pca", "pruned.prune.in"),
         prune_out = os.path.join(RESULTS_DIR, "04_pca", "pruned.prune.out")
@@ -44,7 +44,7 @@ rule plink_pca:
     Extract pruned sites, create bed files, and perform PCA.
     """
     input:
-        vcf = os.path.join(RESULTS_DIR, "03_variants", "filtered.vcf"),
+        vcf = os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf"),
         prune_in = os.path.join(RESULTS_DIR, "04_pca", "pruned.prune.in")
     output:
         eigenvec = os.path.join(RESULTS_DIR, "04_pca", "pca.eigenvec"),
@@ -87,8 +87,8 @@ rule pca_plot:
         variance_plot = os.path.join(RESULTS_DIR, "04_pca", "pca_variance.png"),
         pca_plot = os.path.join(RESULTS_DIR, "04_pca", "pca_plot.png")
     params:
-        male_pattern = config.get("male_pattern", "ML"),
-        female_pattern = config.get("female_pattern", "FL")
+        male_pattern = config["male_pattern"],
+        female_pattern = config["female_pattern"]
     resources:
         cpus_per_task=1,
         mem_mb_per_cpu=4000,

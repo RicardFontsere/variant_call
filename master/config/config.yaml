@@ -6,3 +6,7 @@ reference: "[Genome file path]"
 # Intervals for parallelization
 chromosome_prefix: "[Chromosome start pattern]"
 contig_prefix: "[Contig start pattern]"
+
+# Sex identification patterns 
+male_pattern: "[pattern]"
+female_pattern: "[pattern]"

@@ -63,7 +63,8 @@ include: "rules/00_preprocess.smk"
 include: "rules/01_trimming.smk"
 include: "rules/02_alignment.smk"
 include: "rules/03_variant_calling.smk"
-include: "rules/04_pca.smk"
+include: "rules/04_global_pca.smk"
+include: "rules/05_FST.smk"
 
 # =============================================================================
 # TARGET RULE
@@ -84,8 +85,11 @@ rule all:
         expand(os.path.join(RESULTS_DIR, "02_aligned", "{sample}.dedup.bam.csi"), sample=SAMPLES),
         # Final joint-called variants
         os.path.join(RESULTS_DIR, "03_variants", "raw.vcf"),
-        os.path.join(RESULTS_DIR, "03_variants", "filtered.vcf"),
-        os.path.join(RESULTS_DIR, "03_variants", "filtered.vcf.idx"),
+        os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf"),
+        os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf.idx"),
         # PCA results
+        #os.path.join(RESULTS_DIR, "04_pca", "pca_plot.done"),
         os.path.join(RESULTS_DIR, "04_pca", "pca_plot.png"),
-        os.path.join(RESULTS_DIR, "04_pca", "pca_variance.png")
+        os.path.join(RESULTS_DIR, "04_pca", "pca_variance.png"),
+        # FST results
+        os.path.join(RESULTS_DIR, "05_FST", "males_vs_females.snp")

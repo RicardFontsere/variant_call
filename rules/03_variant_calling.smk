@@ -167,31 +167,46 @@ rule variant_filtration:
         fai = REFERENCE + ".fai",
         dict = REF_PREFIX + ".dict"
     output:
-        vcf = os.path.join(RESULTS_DIR, "03_variants", "filtered.vcf")
+        vcf = os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf")
     log:
         os.path.join(RESULTS_DIR, "logs", "03_variant_filtration.log")
     envmodules:
-        "GATK/4.5.0.0-GCCcore-12.3.0-Java-17"
+        "GATK/4.5.0.0-GCCcore-12.3.0-Java-17",
+        "BCFtools/1.18-GCC-12.3.0"
     shell:
         """
         mkdir -p $(dirname {log})
-        gatk VariantFiltration \
+        gatk SelectVariants \
             -R {input.ref} \
             -V {input.vcf} \
-            -O {output.vcf} \
-            --filter-name "QD_filter" --filter-expression "QD < 2.0" \
+            --restrict-alleles-to BIALLELIC \
+            --select-type-to-include SNP \
+            -O {output.vcf}.tmp.vcf.gz 2>> {log}
+        gatk VariantFiltration \
+            -R {input.ref} \
+            -V {output.vcf}.tmp.vcf.gz \
+            -O {output.vcf}.tmp2.vcf.gz \
+            --filter-name "QD_filter" --filter-expression "QD < 6.0" \
+            --filter-name "DP_low_filter" --filter-expression "DP < 42" \
+            --filter-name "DP_high_filter" --filter-expression "DP > 115" \
             --filter-name "FS_filter" --filter-expression "FS > 60.0" \
-            --filter-name "MQ_filter" --filter-expression "MQ < 40.0" \
+            --filter-name "MQ_filter" --filter-expression "MQ < 50.0" \
             --filter-name "SOR_filter" --filter-expression "SOR > 3.0" \
-            --filter-name "MQRankSum_filter" --filter-expression "MQRankSum < -12.5" \
-            --filter-name "ReadPosRankSum_filter" --filter-expression "ReadPosRankSum < -8.0" 2> {log}
+            --filter-name "MQRankSum_filter" --filter-expression "MQRankSum < -12.5 || vc.hasAttribute('MQRankSum') == false" \
+            --filter-name "ReadPosRankSum_filter" --filter-expression "ReadPosRankSum < -8.0 || vc.hasAttribute('ReadPosRankSum') == false" 2>> {log}
+        
+        # Convert to BCF 2.2 for bcftools compatibility
+        bcftools view {output.vcf}.tmp2.vcf.gz -Ob -o {output.vcf} 2>> {log}
+        bcftools index {output.vcf} 2>> {log}
+        
+        rm -f {output.vcf}.tmp.vcf.gz {output.vcf}.tmp.vcf.gz.tbi {output.vcf}.tmp2.vcf.gz {output.vcf}.tmp2.vcf.gz.tbi
         """
 
 rule index_vcf:
     input:
-        vcf = os.path.join(RESULTS_DIR, "03_variants", "filtered.vcf")
+        vcf = os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf")
     output:
-        idx = os.path.join(RESULTS_DIR, "03_variants", "filtered.vcf.idx")
+        idx = os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf.idx")
     log:
         os.path.join(RESULTS_DIR, "logs", "03_index_vcf.log")
     resources:
