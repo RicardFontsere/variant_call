@@ -31,7 +31,7 @@ rule plink_prune:
         """
         mkdir -p $(dirname {params.out_prefix})
         mkdir -p $(dirname {log})
-        plink --vcf {input.vcf} \
+        plink --bcf {input.vcf} \
             --double-id \
             --allow-extra-chr \
             --set-missing-var-ids @:# \
@@ -65,7 +65,7 @@ rule plink_pca:
     shell:
         """
         mkdir -p $(dirname {log})
-        plink --vcf {input.vcf} \
+        plink --bcf {input.vcf} \
             --double-id \
             --allow-extra-chr \
             --set-missing-var-ids @:# \

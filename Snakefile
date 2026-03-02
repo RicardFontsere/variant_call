@@ -86,7 +86,7 @@ rule all:
         # Final joint-called variants
         os.path.join(RESULTS_DIR, "03_variants", "raw.vcf"),
         os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf"),
-        os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf.idx"),
+        os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf.csi"),
         # PCA results
         #os.path.join(RESULTS_DIR, "04_pca", "pca_plot.done"),
         os.path.join(RESULTS_DIR, "04_pca", "pca_plot.png"),

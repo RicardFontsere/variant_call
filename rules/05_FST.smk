@@ -53,7 +53,7 @@ rule split_vcf_males:
         vcf = os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf"),
         samples = os.path.join(RESULTS_DIR, "03_variants", "males.txt")
     output:
-        vcf = os.path.join(RESULTS_DIR, "03_variants", "males_biallelic.bcf")
+        vcf = os.path.join(RESULTS_DIR, "03_variants", "males_biallelic.vcf")
     resources:
         cpus_per_task=2,
         mem_mb_per_cpu=4000,
@@ -80,7 +80,7 @@ rule split_vcf_females:
         vcf = os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf"),
         samples = os.path.join(RESULTS_DIR, "03_variants", "females.txt")
     output:
-        vcf = os.path.join(RESULTS_DIR, "03_variants", "females_biallelic.bcf")
+        vcf = os.path.join(RESULTS_DIR, "03_variants", "females_biallelic.vcf")
     resources:
         cpus_per_task=2,
         mem_mb_per_cpu=4000,
@@ -109,12 +109,12 @@ rule fst_analysis:
         --zt 1: Z-transformation
     """
     input:
-        males = os.path.join(RESULTS_DIR, "03_variants", "males_biallelic.bcf"),
-        females = os.path.join(RESULTS_DIR, "03_variants", "females_biallelic.bcf")
+        males = os.path.join(RESULTS_DIR, "03_variants", "males_biallelic.vcf"),
+        females = os.path.join(RESULTS_DIR, "03_variants", "females_biallelic.vcf")
     output:
         fst = os.path.join(RESULTS_DIR, "05_FST", "males_vs_females.snp")
     params:
-        out_prefix = os.path.join(RESULTS_DIR, "05_fst", "males_vs_females"),
+        out_prefix = os.path.join(RESULTS_DIR, "05_FST", "males_vs_females"),
         window = 50,
         step = 25
     resources:
@@ -132,5 +132,9 @@ rule fst_analysis:
             --pop2 {input.females} \
             --m 2 \
             --zt 1 \
+            --win {params.window} \
+            --step {params.step} \
+            --mp 1 \
+            --ztmp 1 \
             --o {params.out_prefix} 2> {log}
         """

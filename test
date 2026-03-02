@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "FSTest1.3.py", line 62, in <module>
+  File "FSTest1.3.py", line 57, in read_vcf
+KeyboardInterrupt
+[1070386] Failed to execute script 'FSTest1.3' due to unhandled exception!

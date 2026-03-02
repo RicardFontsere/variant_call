@@ -7,7 +7,9 @@
 # 3. GenotypeGVCFs per interval -> VCFs
 # 4. SortVcf per interval -> sorted VCFs
 # 5. MergeVcfs -> raw.vcf
-# 6. VariantFiltration -> filtered.vcf
+# 6. VariantFiltration -> annotate filters
+# 7. SelectVariants -> apply filters + biallelic SNPs only
+# 8. Convert to BCF + index
 # =============================================================================
 
 rule haplotypecaller:
@@ -160,62 +162,119 @@ rule merge_vcfs:
             -O {output.vcf} 2> {log}
         """
 
+# =============================================================================
+# VARIANT FILTRATION & SELECTION
+# =============================================================================
+
 rule variant_filtration:
+    """
+    Annotate filter tags on the raw VCF. This does NOT remove variants,
+    it only marks them as PASS or with the relevant filter name.
+    """
     input:
         vcf = os.path.join(RESULTS_DIR, "03_variants", "raw.vcf"),
         ref = REFERENCE,
         fai = REFERENCE + ".fai",
         dict = REF_PREFIX + ".dict"
     output:
-        vcf = os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf")
+        vcf = os.path.join(RESULTS_DIR, "03_variants", "filtered_annotated.vcf")
+    resources:
+        cpus_per_task=1,
+        mem_mb_per_cpu=8000,
+        runtime=480
     log:
         os.path.join(RESULTS_DIR, "logs", "03_variant_filtration.log")
     envmodules:
-        "GATK/4.5.0.0-GCCcore-12.3.0-Java-17",
-        "BCFtools/1.18-GCC-12.3.0"
+        "GATK/4.5.0.0-GCCcore-12.3.0-Java-17"
     shell:
         """
         mkdir -p $(dirname {log})
-        gatk SelectVariants \
-            -R {input.ref} \
-            -V {input.vcf} \
-            --restrict-alleles-to BIALLELIC \
-            --select-type-to-include SNP \
-            -O {output.vcf}.tmp.vcf.gz 2>> {log}
         gatk VariantFiltration \
             -R {input.ref} \
-            -V {output.vcf}.tmp.vcf.gz \
-            -O {output.vcf}.tmp2.vcf.gz \
+            -V {input.vcf} \
+            -O {output.vcf} \
             --filter-name "QD_filter" --filter-expression "QD < 6.0" \
             --filter-name "DP_low_filter" --filter-expression "DP < 42" \
             --filter-name "DP_high_filter" --filter-expression "DP > 115" \
             --filter-name "FS_filter" --filter-expression "FS > 60.0" \
             --filter-name "MQ_filter" --filter-expression "MQ < 50.0" \
             --filter-name "SOR_filter" --filter-expression "SOR > 3.0" \
-            --filter-name "MQRankSum_filter" --filter-expression "MQRankSum < -12.5 || vc.hasAttribute('MQRankSum') == false" \
-            --filter-name "ReadPosRankSum_filter" --filter-expression "ReadPosRankSum < -8.0 || vc.hasAttribute('ReadPosRankSum') == false" 2>> {log}
-        
-        # Convert to BCF 2.2 for bcftools compatibility
-        bcftools view {output.vcf}.tmp2.vcf.gz -Ob -o {output.vcf} 2>> {log}
-        bcftools index {output.vcf} 2>> {log}
-        
-        rm -f {output.vcf}.tmp.vcf.gz {output.vcf}.tmp.vcf.gz.tbi {output.vcf}.tmp2.vcf.gz {output.vcf}.tmp2.vcf.gz.tbi
+            --filter-name "MQRankSum" --filter-expression "MQRankSum < -12.5 || vc.hasAttribute('MQRankSum') == false" \
+            --filter-name "ReadPosRankSum" --filter-expression "ReadPosRankSum < -8.0 || vc.hasAttribute('ReadPosRankSum') == false" 2> {log}
         """
 
-rule index_vcf:
+rule select_variants:
+    """
+    Apply filters: keep only PASS biallelic SNPs.
+    --exclude-filtered removes any variant not marked PASS.
+    """
     input:
-        vcf = os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf")
+        vcf = os.path.join(RESULTS_DIR, "03_variants", "filtered_annotated.vcf"),
+        ref = REFERENCE,
+        fai = REFERENCE + ".fai",
+        dict = REF_PREFIX + ".dict"
     output:
-        idx = os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf.idx")
-    log:
-        os.path.join(RESULTS_DIR, "logs", "03_index_vcf.log")
+        vcf = os.path.join(RESULTS_DIR, "03_variants", "filtered_selected.vcf")
     resources:
         cpus_per_task=1,
-        mem_mb_per_cpu=4000
+        mem_mb_per_cpu=8000,
+        runtime=480
+    log:
+        os.path.join(RESULTS_DIR, "logs", "03_select_variants.log")
     envmodules:
         "GATK/4.5.0.0-GCCcore-12.3.0-Java-17"
     shell:
         """
         mkdir -p $(dirname {log})
-        gatk IndexFeatureFile -I {input.vcf} 2> {log}
+        gatk SelectVariants \
+            -R {input.ref} \
+            -V {input.vcf} \
+            -O {output.vcf} \
+            --restrict-alleles-to BIALLELIC \
+            --select-type-to-include SNP \
+            --exclude-filtered 2> {log}
+        """
+
+rule convert_to_bcf:
+    """
+    Convert filtered VCF to BCF.
+    """
+    input:
+        vcf = os.path.join(RESULTS_DIR, "03_variants", "filtered_selected.vcf")
+    output:
+        bcf = os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf")
+    resources:
+        cpus_per_task=2,
+        mem_mb_per_cpu=4000,
+        runtime=120
+    log:
+        os.path.join(RESULTS_DIR, "logs", "03_convert_to_bcf.log")
+    envmodules:
+        "BCFtools/1.18-GCC-12.3.0"
+    shell:
+        """
+        mkdir -p $(dirname {log})
+        bcftools view {input.vcf} -Ob -o {output.bcf} 2> {log}
+        """
+
+rule index_bcf:
+    """
+    Index the final BCF file.
+    """
+    input:
+        bcf = os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf")
+    output:
+        idx = os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf.csi")
+    resources:
+        cpus_per_task=1,
+        mem_mb_per_cpu=4000,
+        runtime=60
+    log:
+        os.path.join(RESULTS_DIR, "logs", "03_index_bcf.log")
+    envmodules:
+        "BCFtools/1.18-GCC-12.3.0"
+    shell:
+        """
+        mkdir -p $(dirname {log})
+        bcftools index {input.bcf} 2> {log}
         """
