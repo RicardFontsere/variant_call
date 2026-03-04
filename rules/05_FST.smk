@@ -67,6 +67,7 @@ rule split_vcf_males:
         mkdir -p $(dirname {log})
         bcftools view \
             -S {input.samples} \
+            -m2 -M2 \
             -v snps \
             -o {output.vcf} \
             {input.vcf} 2> {log}
@@ -95,6 +96,7 @@ rule split_vcf_females:
         bcftools view \
             -S {input.samples} \
             -v snps \
+            -m2 -M2 \
             -o {output.vcf} \
             {input.vcf} 2> {log}
         """

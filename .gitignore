@@ -1,5 +1,4 @@
 .snakemake
-*.out
 config
 config_LC.yaml
 config_RA.yaml
@@ -7,3 +6,4 @@ config_RD.yaml
 config_Rib.yaml
 config_RL.yaml
 config_PL.yaml
+/out

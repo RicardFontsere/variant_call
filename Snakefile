@@ -1,7 +1,7 @@
 import os
 import glob
 
-configfile: "master/config/config.yaml"
+configfile: "master/config/config_RL.yaml"
 
 # =============================================================================
 # CONFIGURATION
@@ -62,9 +62,12 @@ def get_read_file(sample, read_num):
 include: "rules/00_preprocess.smk"
 include: "rules/01_trimming.smk"
 include: "rules/02_alignment.smk"
+include: "rules/02b_coverage.smk"
 include: "rules/03_variant_calling.smk"
 include: "rules/04_global_pca.smk"
 include: "rules/05_FST.smk"
+include: "rules/06_Kmer_GWAS.smk"
+include: "rules/07_snp_density.smk"
 
 # =============================================================================
 # TARGET RULE
@@ -83,6 +86,11 @@ rule all:
         # Aligned and processed BAMs
         expand(os.path.join(RESULTS_DIR, "02_aligned", "{sample}.dedup.bam"), sample=SAMPLES),
         expand(os.path.join(RESULTS_DIR, "02_aligned", "{sample}.dedup.bam.csi"), sample=SAMPLES),
+        # Coverage stats
+        os.path.join(RESULTS_DIR, "02_coverage", "all_samples_coverage_summary.tsv"),
+        #VCF stats
+        os.path.join(RESULTS_DIR, "03_variants", "diagnostics", "raw_SNPs.table"),
+        os.path.join(RESULTS_DIR, "03_variants", "diagnostics", "raw_INDELs.table"),
         # Final joint-called variants
         os.path.join(RESULTS_DIR, "03_variants", "raw.vcf"),
         os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf"),
@@ -92,4 +100,7 @@ rule all:
         os.path.join(RESULTS_DIR, "04_pca", "pca_plot.png"),
         os.path.join(RESULTS_DIR, "04_pca", "pca_variance.png"),
         # FST results
-        os.path.join(RESULTS_DIR, "05_FST", "males_vs_females.snp")
+        os.path.join(RESULTS_DIR, "05_FST", "males_vs_females.snp"),
+        # KMER_GWAS
+        os.path.join(RESULTS_DIR, "06_kmer", "combined", "blast", "male_blast.out"),
+        os.path.join(RESULTS_DIR, "06_kmer", "combined", "blast", "female_blast.out"),
