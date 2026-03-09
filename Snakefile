@@ -17,6 +17,9 @@ INTERVALS_DIR = os.path.join(os.path.dirname(REFERENCE), "intervals")
 # Discover samples: subdirectories in READS_DIR
 SAMPLES = sorted([d for d in os.listdir(READS_DIR) if os.path.isdir(os.path.join(READS_DIR, d))])
 
+ML_SAMPLES = [s for s in SAMPLES if config["male_pattern"] in s]
+FL_SAMPLES = [s for s in SAMPLES if config["female_pattern"] in s]
+
 # Discover intervals from pre-generated interval files
 def get_intervals(wildcards=None):
     """Get intervals after checkpoint completes."""
@@ -94,7 +97,6 @@ rule all:
         # Final joint-called variants
         os.path.join(RESULTS_DIR, "03_variants", "raw.vcf"),
         os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf"),
-        os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf.csi"),
         # PCA results
         #os.path.join(RESULTS_DIR, "04_pca", "pca_plot.done"),
         os.path.join(RESULTS_DIR, "04_pca", "pca_plot.png"),
@@ -104,3 +106,5 @@ rule all:
         # KMER_GWAS
         os.path.join(RESULTS_DIR, "06_kmer", "combined", "blast", "male_blast.out"),
         os.path.join(RESULTS_DIR, "06_kmer", "combined", "blast", "female_blast.out"),
+        #SNP density
+        os.path.join(RESULTS_DIR, "07_snp_density", "results", "snpdensity_fc.csv")

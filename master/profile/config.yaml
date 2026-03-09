@@ -2,7 +2,8 @@ jobs: 400  # max number of pending and running jobs
 latency-wait: 60  # seconds to wait after job finished (to account for file system latency)
 printshellcmds: True
 executor: cluster-generic
-cluster-generic-submit-cmd: sbatch
+cluster-generic-submit-cmd: >-
+     sbatch
      --nodes={resources.nodes}
      --ntasks={resources.tasks}
      --cpus-per-task={resources.cpus_per_task}

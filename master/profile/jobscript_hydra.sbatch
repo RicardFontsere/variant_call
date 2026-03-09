@@ -1,5 +1,8 @@
 #!/bin/bash
 
+#SBATCH --output=out/%x.%j.out
+#SBATCH --error=out/%x.%j.err
+
 # VUB-HPC specific customizations - do not modify!
 
 OS_SUBMIT=$VSC_OS_LOCAL

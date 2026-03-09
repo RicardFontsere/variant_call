@@ -19,7 +19,7 @@ rule create_windows:
     input:
         fai = REFERENCE + ".fai"
     output:
-        bed = os.path.join(RESULTS_DIR, "06_snp_density", "windows.bed")
+        bed = os.path.join(RESULTS_DIR, "07_snp_density", "windows.bed")
     params:
         window_size = config["window_size"]
     resources:
@@ -27,9 +27,9 @@ rule create_windows:
         mem_mb_per_cpu=2000,
         runtime=10
     log:
-        os.path.join(RESULTS_DIR, "logs", "06_snp_density", "create_windows.log")
+        os.path.join(RESULTS_DIR, "logs", "07_snp_density", "create_windows.log")
     envmodules:
-        "BEDTools/2.31.1-GCC-12.3.0"
+        "BEDTools/2.30.0-GCC-11.3.0"
     shell:
         """
         mkdir -p $(dirname {output.bed})
@@ -48,13 +48,13 @@ rule split_vcf_per_sample:
     input:
         vcf = os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf")
     output:
-        vcf = os.path.join(RESULTS_DIR, "06_snp_density", "per_sample", "{sample}.vcf.gz")
+        vcf = os.path.join(RESULTS_DIR, "07_snp_density", "per_sample", "{sample}.vcf.gz")
     resources:
         cpus_per_task=1,
         mem_mb_per_cpu=4000,
         runtime=120
     log:
-        os.path.join(RESULTS_DIR, "logs", "06_snp_density", "split_{sample}.log")
+        os.path.join(RESULTS_DIR, "logs", "07_snp_density", "split_{sample}.log")
     envmodules:
         "BCFtools/1.18-GCC-12.3.0"
     shell:
@@ -80,18 +80,18 @@ rule snp_density_per_sample:
       5. bases_covered  6. window_length  7. fraction_covered
     """
     input:
-        windows = os.path.join(RESULTS_DIR, "06_snp_density", "windows.bed"),
-        vcf = os.path.join(RESULTS_DIR, "06_snp_density", "per_sample", "{sample}.vcf.gz")
+        windows = os.path.join(RESULTS_DIR, "07_snp_density", "windows.bed"),
+        vcf = os.path.join(RESULTS_DIR, "07_snp_density", "per_sample", "{sample}.vcf.gz")
     output:
-        density = os.path.join(RESULTS_DIR, "06_snp_density", "raw", "{sample}.txt")
+        density = os.path.join(RESULTS_DIR, "07_snp_density", "raw", "{sample}.txt")
     resources:
         cpus_per_task=2,
-        mem_mb_per_cpu=4000,
-        runtime=120
+        mem_mb_per_cpu=50000,
+        runtime=30
     log:
-        os.path.join(RESULTS_DIR, "logs", "06_snp_density", "density_{sample}.log")
+        os.path.join(RESULTS_DIR, "logs", "07_snp_density", "density_{sample}.log")
     envmodules:
-        "BEDTools/2.31.1-GCC-12.3.0"
+        "BEDTools/2.30.0-GCC-11.3.0"
     shell:
         """
         mkdir -p $(dirname {output.density})
@@ -112,15 +112,17 @@ rule normalize_snp_density:
     Column 7 is what extract_snp_density.py reads downstream.
     """
     input:
-        density = os.path.join(RESULTS_DIR, "06_snp_density", "raw", "{sample}.txt")
+        density = os.path.join(RESULTS_DIR, "07_snp_density", "raw", "{sample}.txt")
     output:
-        norm = os.path.join(RESULTS_DIR, "06_snp_density", "normalized", "{sample}.txt")
+        norm = os.path.join(RESULTS_DIR, "07_snp_density", "normalized", "{sample}.txt")
     resources:
         cpus_per_task=1,
-        mem_mb_per_cpu=4000,
+        mem_mb_per_cpu=10000,
         runtime=30
+    params:
+        chr_prefix=config["chromosome_prefix"]
     log:
-        os.path.join(RESULTS_DIR, "logs", "06_snp_density", "normalize_{sample}.log")
+        os.path.join(RESULTS_DIR, "logs", "07_snp_density", "normalize_{sample}.log")
     envmodules:
         "R-bundle-CRAN/2025.10-foss-2025a"
     shell:
@@ -128,21 +130,17 @@ rule normalize_snp_density:
         mkdir -p $(dirname {output.norm})
         mkdir -p $(dirname {log})
         Rscript --vanilla -e '
-            data <- read.table("{input.density}", sep="\\t", header=FALSE)
+            data <- read.table("{input.density}", sep="\t", header=FALSE)
+            data <- data[grepl("^{params.chr_prefix}", data$V1), ]
             data_sorted <- data[order(data$V1, data$V2), ]
-            med <- median(data_sorted$V4)
-            if (med == 0) {{
-                warning("Median SNP count is 0; using mean as fallback")
-                med <- mean(data_sorted$V4)
-            }}
-            if (med > 0) {{
-                data_sorted$V7 <- data_sorted$V4 / med
+            total <- sum(data_sorted$V4)
+            if (total > 0) {{
+                data_sorted$V7 <- (data_sorted$V4 / total) * 1e6
             }} else {{
-                warning("No SNPs found; setting normalized values to 0")
                 data_sorted$V7 <- 0
             }}
-            write.table(data_sorted, "{output.norm}", sep="\\t",
-                        row.names=FALSE, col.names=FALSE, quote=FALSE)
+            write.table(data_sorted, "{output.norm}", sep="\t",
+            row.names=FALSE, col.names=FALSE, quote=FALSE)
         ' >> {log} 2>&1
         """
 
@@ -154,17 +152,17 @@ rule aggregate_snp_density_males:
     """
     input:
         normalized_files = expand(
-            os.path.join(RESULTS_DIR, "06_snp_density", "normalized", "{sample}.txt"),
+            os.path.join(RESULTS_DIR, "07_snp_density", "normalized", "{sample}.txt"),
             sample=ML_SAMPLES
         )
     output:
-        avg = os.path.join(RESULTS_DIR, "06_snp_density", "results", "snpdensity_males.csv")
+        avg = os.path.join(RESULTS_DIR, "07_snp_density", "results", "snpdensity_males.csv")
     resources:
         cpus_per_task=1,
-        mem_mb_per_cpu=4000,
+        mem_mb_per_cpu=10000,
         runtime=30
     log:
-        os.path.join(RESULTS_DIR, "logs", "06_snp_density", "aggregate_males.log")
+        os.path.join(RESULTS_DIR, "logs", "07_snp_density", "aggregate_males.log")
     shell:
         """
         mkdir -p $(dirname {output.avg})
@@ -182,17 +180,17 @@ rule aggregate_snp_density_females:
     """
     input:
         normalized_files = expand(
-            os.path.join(RESULTS_DIR, "06_snp_density", "normalized", "{sample}.txt"),
+            os.path.join(RESULTS_DIR, "07_snp_density", "normalized", "{sample}.txt"),
             sample=FL_SAMPLES
         )
     output:
-        avg = os.path.join(RESULTS_DIR, "06_snp_density", "results", "snpdensity_females.csv")
+        avg = os.path.join(RESULTS_DIR, "07_snp_density", "results", "snpdensity_females.csv")
     resources:
         cpus_per_task=1,
-        mem_mb_per_cpu=4000,
+        mem_mb_per_cpu=10000,
         runtime=30
     log:
-        os.path.join(RESULTS_DIR, "logs", "06_snp_density", "aggregate_females.log")
+        os.path.join(RESULTS_DIR, "logs", "07_snp_density", "aggregate_females.log")
     shell:
         """
         mkdir -p $(dirname {output.avg})
@@ -209,16 +207,16 @@ rule snp_density_fold_change:
     Output: log2((male_avg + 1) / (female_avg + 1)) per window.
     """
     input:
-        females = os.path.join(RESULTS_DIR, "06_snp_density", "results", "snpdensity_females.csv"),
-        males = os.path.join(RESULTS_DIR, "06_snp_density", "results", "snpdensity_males.csv")
+        females = os.path.join(RESULTS_DIR, "07_snp_density", "results", "snpdensity_females.csv"),
+        males = os.path.join(RESULTS_DIR, "07_snp_density", "results", "snpdensity_males.csv")
     output:
-        fc = os.path.join(RESULTS_DIR, "06_snp_density", "results", "snpdensity_fc.csv")
+        fc = os.path.join(RESULTS_DIR, "07_snp_density", "results", "snpdensity_fc.csv")
     resources:
         cpus_per_task=1,
-        mem_mb_per_cpu=4000,
+        mem_mb_per_cpu=10000,
         runtime=30
     log:
-        os.path.join(RESULTS_DIR, "logs", "06_snp_density", "fold_change.log")
+        os.path.join(RESULTS_DIR, "logs", "07_snp_density", "fold_change.log")
     shell:
         """
         mkdir -p $(dirname {log})
