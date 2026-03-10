@@ -1,8 +1,6 @@
 import os
 import glob
 
-configfile: "master/config/config_RL.yaml"
-
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
@@ -71,6 +69,7 @@ include: "rules/04_global_pca.smk"
 include: "rules/05_FST.smk"
 include: "rules/06_Kmer_GWAS.smk"
 include: "rules/07_snp_density.smk"
+include: "rules/08_GWAS.smk"
 
 # =============================================================================
 # TARGET RULE
@@ -107,4 +106,6 @@ rule all:
         os.path.join(RESULTS_DIR, "06_kmer", "combined", "blast", "male_blast.out"),
         os.path.join(RESULTS_DIR, "06_kmer", "combined", "blast", "female_blast.out"),
         #SNP density
-        os.path.join(RESULTS_DIR, "07_snp_density", "results", "snpdensity_fc.csv")
+        os.path.join(RESULTS_DIR, "07_snp_density", "results", "snpdensity_fc.csv"),
+        #GWAS
+        os.path.join(RESULTS_DIR, "08_GWAS", "gwas_gemma.assoc.txt")
