@@ -70,6 +70,8 @@ include: "rules/05_FST.smk"
 include: "rules/06_Kmer_GWAS.smk"
 include: "rules/07_snp_density.smk"
 include: "rules/08_GWAS.smk"
+include: "rules/09_coverage.smk"
+include: "rules/10_kmer_bb.smk"
 
 # =============================================================================
 # TARGET RULE
@@ -108,4 +110,8 @@ rule all:
         #SNP density
         os.path.join(RESULTS_DIR, "07_snp_density", "results", "snpdensity_fc.csv"),
         #GWAS
-        os.path.join(RESULTS_DIR, "08_GWAS", "gwas_gemma.assoc.txt")
+        os.path.join(RESULTS_DIR, "08_GWAS", "gwas_gemma.assoc.txt"),
+        #M:F coverage
+        os.path.join(RESULTS_DIR, "09_coverage", "results", "coverage_fc.csv"),
+        #Kmer_BB
+        expand(os.path.join(RESULTS_DIR, "10_kmer_bb", "blast", "{sex}_contigs_blast.out"), sex=["male", "female"])

@@ -345,7 +345,9 @@ rule blast_male_kmers:
         mkdir -p $(dirname {output.blast})
         mkdir -p $(dirname {log})
         blastn -query {input.contigs} -db {input.ref} \
-            -outfmt 6 -num_threads {resources.cpus_per_task} \
+            -outfmt '6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen' \
+            -evalue 1e-5 \
+            -num_threads {resources.cpus_per_task} \
             > {output.blast} 2> {log}
         """
 
@@ -373,6 +375,8 @@ rule blast_female_kmers:
         mkdir -p $(dirname {output.blast})
         mkdir -p $(dirname {log})
         blastn -query {input.contigs} -db {input.ref} \
-            -outfmt 6 -num_threads {resources.cpus_per_task} \
+            -outfmt '6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen' \
+            -evalue 1e-5 \
+            -num_threads {resources.cpus_per_task} \
             > {output.blast} 2> {log}
         """
