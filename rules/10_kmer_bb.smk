@@ -12,7 +12,7 @@
 # 1. Convert sex-specific k-mer sequences to FASTA
 # 2. BBDuk: pull reads matching sex-specific k-mers (per sample)
 # 3. MEGAHIT: assemble matched reads per sample
-# 4. CD-HIT: reduce redundant contigs across samples
+# 4. CD-HIT: reduce redundant contigs across samples (Note changed to 95% identity and added -aS 0.8 minimum 80% needs to match. Different from Sophie)
 # 5. BLAST: map reduced contigs to reference genome
 #
 # Compared to the ABySS assembly in step 06 (which assembles the raw 31bp
@@ -104,8 +104,8 @@ rule megahit_sexspecific:
     params:
         outdir = os.path.join(RESULTS_DIR, "10_kmer_bb", "{sex}_megahit", "{sample}")
     resources:
-        cpus_per_task=40,
-        mem_mb_per_cpu=4000,
+        cpus_per_task=20,
+        mem_mb_per_cpu=2000,
         runtime=2040
     log:
         os.path.join(RESULTS_DIR, "logs", "10_kmer_bb", "{sex}_megahit_{sample}.log")
@@ -139,7 +139,7 @@ rule reduce_contigs:
         reduced = os.path.join(RESULTS_DIR, "10_kmer_bb", "{sex}_reduced_contigs.fasta")
     resources:
         cpus_per_task=20,
-        mem_mb_per_cpu=500,
+        mem_mb_per_cpu=1000,
         runtime=1200
     log:
         os.path.join(RESULTS_DIR, "logs", "10_kmer_bb", "reduce_{sex}_contigs.log")
@@ -152,7 +152,8 @@ rule reduce_contigs:
         cd-hit-est \
             -i {output.all_contigs} \
             -o {output.reduced} \
-            -c 0.98 -n 10 -d 0 \
+            -c 0.95 -n 10 -d 0 \
+            -aS 0.8 \
             -M 16000 \
             -T {resources.cpus_per_task} >> {log} 2>&1
         echo "Input contigs: $(grep -c '^>' {output.all_contigs})" >> {log}
@@ -172,9 +173,9 @@ rule blast_contigs:
     output:
         blast = os.path.join(RESULTS_DIR, "10_kmer_bb", "blast", "{sex}_contigs_blast.out")
     resources:
-        cpus_per_task=40,
-        mem_mb_per_cpu=16000,
-        runtime=600
+        cpus_per_task=20,
+        mem_mb_per_cpu=36000,
+        runtime=4000
     log:
         os.path.join(RESULTS_DIR, "logs", "10_kmer_bb", "blast_{sex}_contigs.log")
     envmodules:
@@ -186,7 +187,11 @@ rule blast_contigs:
         blastn \
             -query {input.contigs} \
             -db {input.ref} \
-            -outfmt 6 \
-            -num_threads {resources.cpus_per_task} \
+            -task megablast \
+            -word_size 16 \
+            -outfmt '6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen' \
+            -evalue 1e-5 \
+            -perc_identity 90 \
+            -num_threads 20 \
             -out {output.blast} 2> {log}
         """

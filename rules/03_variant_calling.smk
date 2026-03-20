@@ -235,16 +235,21 @@ rule extract_indel_table:
             -O {output.table} 2>> {log}
         rm -f {output.table}.tmp.vcf {output.table}.tmp.vcf.idx
         """
-
-
 # =============================================================================
-# 03b - VARIANT FILTRATION (split by type, filter independently, merge)
+# 03b - VARIANT FILTRATION
 #
 # Workflow:
 # 1. SelectVariants to split raw.vcf into SNPs and INDELs
 # 2. VariantFiltration with type-specific thresholds from config
-# 3. MergeVcfs to combine filtered SNPs and INDELs
-# 4. Convert to BCF for downstream compatibility
+# 3. MergeVcfs to combine filtered SNPs and INDELs (site-level filtering)
+# 4. Extract per-sample genotype depth (DP) from site-filtered BCF
+# 5. Auto-compute global DP thresholds (median of per-sample 5th/99th pctl)
+# 6. Apply genotype-level DP filter and set failed genotypes to no-call
+# 7. Final output: filtered.bcf
+#
+# Diagnostic outputs for notebook:
+#   - genotype_dp/dp_percentiles.tsv: per-sample percentile summary
+#   - genotype_dp/dp_histograms.tsv: per-sample depth distributions (binned)
 # =============================================================================
 
 
@@ -405,15 +410,16 @@ rule filter_indels:
 rule merge_filtered_variants:
     """
     Merge filtered SNPs and INDELs back together.
-    Keep only sites that PASS all filters.
-    Convert to BCF.
+    Keep only sites that PASS all site-level filters.
+    This is an intermediate BCF before genotype-level filtering.
     """
     input:
         snps = os.path.join(RESULTS_DIR, "03_variants", "filtered_SNPs.vcf"),
         indels = os.path.join(RESULTS_DIR, "03_variants", "filtered_INDELs.vcf"),
         dict = REF_PREFIX + ".dict"
     output:
-        vcf = os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf")
+        vcf = temp(os.path.join(RESULTS_DIR, "03_variants", "filtered_sites.vcf")),
+        idx = temp(os.path.join(RESULTS_DIR, "03_variants", "filtered_sites.vcf.idx"))
     resources:
         cpus_per_task=4,
         mem_mb_per_cpu=4000,
@@ -433,41 +439,142 @@ rule merge_filtered_variants:
             -D {input.dict} \
             -O {output.vcf}.tmp.vcf 2> {log}
         
-        bcftools view -f PASS {output.vcf}.tmp.vcf -Ob -o {output.vcf} 2>> {log}
-        bcftools index {output.vcf} 2>> {log}
+        bcftools view -f PASS {output.vcf}.tmp.vcf -Ov -o {output.vcf} 2>> {log}
+        gatk IndexFeatureFile -I {output.vcf} 2>> {log}
         
         rm -f {output.vcf}.tmp.vcf {output.vcf}.tmp.vcf.idx
         """
 
-rule extract_filtered_table:
-    """Extract quality metrics from filtered variants."""
+
+# =============================================================================
+# GENOTYPE-LEVEL DEPTH FILTERING
+#
+# Genotypes with DP outside the 5th-99th percentile range are set to no-call.
+# Thresholds are auto-computed from the data: global lower = median of
+# per-sample 5th percentiles, global upper = median of per-sample 99th pctl.
+# =============================================================================
+
+
+rule extract_genotype_dp:
+    """
+    Extract per-sample genotype depth (DP) from site-filtered VCF.
+    Output is a tab-delimited table: one column per sample, one row per site.
+    """
     input:
-        vcf = os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf"),
-        ref = REFERENCE,
-        fai = REFERENCE + ".fai",
-        dict = REF_PREFIX + ".dict"
+        vcf = os.path.join(RESULTS_DIR, "03_variants", "filtered_sites.vcf")
     output:
-        table = os.path.join(RESULTS_DIR, "03_variants", "diagnostics", "filtered_INDELs.table")
+        dp_table = os.path.join(RESULTS_DIR, "03_variants", "genotype_dp", "dp_table.tsv")
     resources:
         cpus_per_task=1,
         mem_mb_per_cpu=8000,
         runtime=120
     log:
-        os.path.join(RESULTS_DIR, "logs", "03_diagnostics", "extract_filtered_table.log")
+        os.path.join(RESULTS_DIR, "logs", "03_variant_filtration", "extract_dp.log")
     envmodules:
-        "GATK/4.5.0.0-GCCcore-12.3.0-Java-17"
+        "BCFtools/1.18-GCC-12.3.0"
     shell:
         """
-        mkdir -p $(dirname {output.table})
+        mkdir -p $(dirname {output.dp_table})
         mkdir -p $(dirname {log})
-        gatk SelectVariants \
+
+        # Header: sample names
+        bcftools query -l {input.vcf} | tr '\\n' '\\t' | \
+            sed 's/\\t$/\\n/' > {output.dp_table} 2> {log}
+
+        # Body: per-sample DP values
+        bcftools query -f '[%DP\\t]\\n' {input.vcf} | \
+            sed 's/\\t$//' >> {output.dp_table} 2>> {log}
+        """
+
+
+rule compute_dp_thresholds:
+    """
+    Compute per-sample DP percentiles and auto-select global thresholds.
+    Global lower = median of per-sample 5th percentiles (floored).
+    Global upper = median of per-sample 99th percentiles (ceiled).
+
+    Diagnostic outputs for notebook:
+      - dp_percentiles.tsv: per-sample stats
+      - dp_histograms.tsv: per-sample binned distributions
+    Pipeline output:
+      - dp_thresholds.tsv: DP_lower and DP_upper for the filter step
+    """
+    input:
+        dp_table = os.path.join(RESULTS_DIR, "03_variants", "genotype_dp", "dp_table.tsv")
+    output:
+        percentiles = os.path.join(RESULTS_DIR, "03_variants", "genotype_dp", "dp_percentiles.tsv"),
+        histograms = os.path.join(RESULTS_DIR, "03_variants", "genotype_dp", "dp_histograms.tsv"),
+        thresholds = os.path.join(RESULTS_DIR, "03_variants", "genotype_dp", "dp_thresholds.tsv")
+    resources:
+        cpus_per_task=1,
+        mem_mb_per_cpu=16000,
+        runtime=60
+    log:
+        os.path.join(RESULTS_DIR, "logs", "03_variant_filtration", "compute_dp_thresholds.log")
+    shell:
+        """
+        mkdir -p $(dirname {log})
+        python scripts/compute_dp_thresholds.py \
+            {input.dp_table} \
+            {output.percentiles} \
+            {output.histograms} \
+            {output.thresholds} &> {log}
+        """
+
+
+rule apply_genotype_dp_filter:
+    """
+    Apply genotype depth filter using auto-computed thresholds.
+    Reads DP_lower and DP_upper from the thresholds file.
+    Marks genotypes outside the range, then sets them to no-call.
+    Converts final result to BCF and indexes.
+    """
+    input:
+        vcf = os.path.join(RESULTS_DIR, "03_variants", "filtered_sites.vcf"),
+        thresholds = os.path.join(RESULTS_DIR, "03_variants", "genotype_dp", "dp_thresholds.tsv"),
+        ref = REFERENCE,
+        fai = REFERENCE + ".fai",
+        dict = REF_PREFIX + ".dict"
+    output:
+        bcf = os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf")
+    resources:
+        cpus_per_task=4,
+        mem_mb_per_cpu=8000,
+        runtime=120
+    log:
+        os.path.join(RESULTS_DIR, "logs", "03_variant_filtration", "apply_genotype_dp_filter.log")
+    envmodules:
+        "GATK/4.5.0.0-GCCcore-12.3.0-Java-17",
+        "BCFtools/1.18-GCC-12.3.0"
+    shell:
+        """
+        mkdir -p $(dirname {log})
+
+        # Read thresholds from file
+        DP_LOWER=$(awk '$1=="DP_lower" {{print $2}}' {input.thresholds})
+        DP_UPPER=$(awk '$1=="DP_upper" {{print $2}}' {input.thresholds})
+
+        echo "Applying genotype DP filter: DP < $DP_LOWER || DP > $DP_UPPER" > {log}
+
+        # Step 1: Mark genotypes outside the DP range
+        gatk VariantFiltration \
             -R {input.ref} \
             -V {input.vcf} \
-            -O {output.table}.tmp.vcf 2> {log}
-        gatk VariantsToTable \
-            -V {output.table}.tmp.vcf \
-            -F CHROM -F POS -F QUAL -F QD -F DP -F MQ -F MQRankSum -F FS -F ReadPosRankSum -F SOR \
-            --show-filtered \
-            -O {output.table} 2>> {log}
-        rm -f {output.table}.tmp.vcf {output.table}.tmp.vcf.idx
+            -O {output.bcf}.tmp1.vcf \
+            --genotype-filter-expression "DP < $DP_LOWER || DP > $DP_UPPER" \
+            --genotype-filter-name "DP_${{DP_LOWER}}-${{DP_UPPER}}" 2>> {log}
+
+        # Step 2: Set filtered genotypes to no-call
+        gatk SelectVariants \
+            -R {input.ref} \
+            -V {output.bcf}.tmp1.vcf \
+            --set-filtered-gt-to-nocall \
+            -O {output.bcf}.tmp2.vcf 2>> {log}
+
+        # Step 3: Convert to BCF and index
+        bcftools view {output.bcf}.tmp2.vcf -Ob -o {output.bcf} 2>> {log}
+        bcftools index {output.bcf} 2>> {log}
+
+        rm -f {output.bcf}.tmp1.vcf {output.bcf}.tmp1.vcf.idx \
+              {output.bcf}.tmp2.vcf {output.bcf}.tmp2.vcf.idx
         """
