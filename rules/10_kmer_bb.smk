@@ -140,7 +140,7 @@ rule reduce_contigs:
     resources:
         cpus_per_task=20,
         mem_mb_per_cpu=1000,
-        runtime=1200
+        runtime=1000
     log:
         os.path.join(RESULTS_DIR, "logs", "10_kmer_bb", "reduce_{sex}_contigs.log")
     envmodules:
@@ -153,7 +153,6 @@ rule reduce_contigs:
             -i {output.all_contigs} \
             -o {output.reduced} \
             -c 0.95 -n 10 -d 0 \
-            -aS 0.8 \
             -M 16000 \
             -T {resources.cpus_per_task} >> {log} 2>&1
         echo "Input contigs: $(grep -c '^>' {output.all_contigs})" >> {log}
@@ -188,9 +187,9 @@ rule blast_contigs:
             -query {input.contigs} \
             -db {input.ref} \
             -task megablast \
-            -word_size 16 \
+            -word_size 30 \
             -outfmt '6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen' \
-            -evalue 1e-5 \
+            -evalue 1e-50 \
             -perc_identity 90 \
             -num_threads 20 \
             -out {output.blast} 2> {log}

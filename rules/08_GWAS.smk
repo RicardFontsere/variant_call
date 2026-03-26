@@ -131,7 +131,7 @@ rule gemma:
         cd {params.output_directory} && \
         /user/brussel/109/vsc10945/home/scratch/Snakemake/SexDetection/software/gemma-0.98.5-linux-static-AMD64 \
             -bfile {params.base_name_in} \
-            -lm 2 \
+            -lm 4 \
             -o temp_output &> {log}
 
         mv {params.output_directory}/output/temp_output.assoc.txt {output.assoc}

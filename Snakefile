@@ -71,7 +71,8 @@ include: "rules/06_Kmer_GWAS.smk"
 include: "rules/07_snp_density.smk"
 include: "rules/08_GWAS.smk"
 include: "rules/09_coverage.smk"
-include: "rules/10_kmer_bb.smk"
+#include: "rules/10_kmer_bb.smk"
+#include: "rules/11_kmer_coverage.smk"
 
 # =============================================================================
 # TARGET RULE
@@ -114,4 +115,13 @@ rule all:
         #M:F coverage
         os.path.join(RESULTS_DIR, "09_coverage", "results", "coverage_fc.csv"),
         #Kmer_BB
-        expand(os.path.join(RESULTS_DIR, "10_kmer_bb", "blast", "{sex}_contigs_blast.out"), sex=["male", "female"])
+        #expand(os.path.join(RESULTS_DIR, "10_kmer_bb", "blast", "{sex}_contigs_blast.out"), sex=["male", "female"]),
+        #Kmer_COV
+#        os.path.join(RESULTS_DIR, "11_kmer_coverage", "results", "male_samples_counts.tsv"),
+#        os.path.join(RESULTS_DIR, "11_kmer_coverage", "results", "female_samples_counts.tsv")
+#        #Kmer_YmerWmer
+#        os.path.join(RESULTS_DIR, "11_kmer_coverage", "filtered", "wmers.assoc"),
+#        os.path.join(RESULTS_DIR, "11_kmer_coverage", "filtered", "ymers.assoc"),
+#        os.path.join(RESULTS_DIR, "11_kmer_coverage", "blast", "ymers_blast.out"),
+#        os.path.join(RESULTS_DIR, "11_kmer_coverage", "blast", "wmers_blast.out"),
+#
