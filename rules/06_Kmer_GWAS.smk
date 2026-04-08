@@ -12,7 +12,6 @@
 # 8. BLAST assembled contigs against reference
 # =============================================================================
 
-KMERSGWAS_DIR = "/user/brussel/109/vsc10945/home/scratch/Software/kmerGWAS"
 
 
 rule kmer_analysis:
