@@ -78,7 +78,7 @@ rule add_strand_information:
     shell:
         """
         mkdir -p $(dirname {log})
-        {KMERSGWAS_DIR}/bin/kmers_add_strand_information \
+        binaries/kmers_add_strand_information \
             -c {params.canon_prefix} \
             -n {params.all_prefix} \
             -k 31 \
@@ -111,7 +111,7 @@ rule combine_kmers:
         mkdir -p $(dirname {output.kmers_list})
         mkdir -p $(dirname {log})
         paste <(printf '%s\\n' {input.strands}) <(printf '%s\\n' {params.samples}) > {output.kmers_list}
-        {KMERSGWAS_DIR}/bin/list_kmers_found_in_multiple_samples \
+        binaries/list_kmers_found_in_multiple_samples \
             -l {output.kmers_list} \
             -k 31 \
             --mac 3 \
@@ -144,7 +144,7 @@ rule build_kmers_table:
         """
         mkdir -p $(dirname {output.table})
         mkdir -p $(dirname {log})
-        {KMERSGWAS_DIR}/bin/build_kmers_table \
+        binaries/build_kmers_table \
             -l {input.kmers_list} \
             -k 31 \
             -a {input.combined} \
@@ -182,7 +182,7 @@ rule kmers_table_to_bed:
         echo -e "accession_id\\tphenotype_value" > {params.phenotype}
         awk -v mp="{params.male_pattern}" '{{print $2 "\\t" ($2~mp?1:2)}}' \
             {input.kmers_list} >> {params.phenotype}
-        {KMERSGWAS_DIR}/bin/kmers_table_to_bed \
+        binaries/kmers_table_to_bed \
             -t {params.table_prefix} \
             -k 31 \
             -p {params.phenotype} \
@@ -248,8 +248,8 @@ rule kmer_association:
         echo "Female-specific (F_A=0, F_U=1): $(wc -l < {output.female_assoc})" >> {log}
 
         # Convert to ABySS input
-        python3 /user/brussel/109/vsc10945/home/scratch/Snakemake/SexDetectionTristan/TrmMapCall/scripts/plink_to_abyss_kmers.py {output.male_assoc} {output.male_abyss} 2>> {log}
-        python3 /user/brussel/109/vsc10945/home/scratch/Snakemake/SexDetectionTristan/TrmMapCall/scripts/plink_to_abyss_kmers.py {output.female_assoc} {output.female_abyss} 2>> {log}
+        python3 scripts/plink_to_abyss_kmers.py {output.male_assoc} {output.male_abyss} 2>> {log}
+        python3 scripts/plink_to_abyss_kmers.py {output.female_assoc} {output.female_abyss} 2>> {log}
         """
 
 

@@ -129,7 +129,7 @@ rule fst_analysis:
         """
         mkdir -p $(dirname {output.fst})
         mkdir -p $(dirname {log})
-        /user/brussel/109/vsc10945/home/scratch/Software/FSTest/FSTest1.3 \
+        binaries/FSTest1.3 \
             --pop1 {input.males} \
             --pop2 {input.females} \
             --m 2 \
