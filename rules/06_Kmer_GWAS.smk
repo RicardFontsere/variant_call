@@ -42,11 +42,11 @@ rule kmer_analysis:
         cd {params.outdir}
         echo {input.r1} > input_files.txt
         echo {input.r2} >> input_files.txt
-        {KMERSGWAS_DIR}/external_programs/kmc_v3 \
+        binaries/kmc_v3 \
             -t{resources.cpus_per_task} -k31 -ci2 \
             @input_files.txt output_kmc_canon ./ \
             1> kmc_canon.1 2> kmc_canon.2
-        {KMERSGWAS_DIR}/external_programs/kmc_v3 \
+        binaries/kmc_v3 \
             -t{resources.cpus_per_task} -k31 -ci0 -b \
             @input_files.txt output_kmc_all ./ \
             1> kmc_all.1 2> kmc_all.2

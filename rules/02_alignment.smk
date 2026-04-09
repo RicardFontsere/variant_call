@@ -17,12 +17,11 @@ rule align:
     resources:
         cpus_per_task=10,
         mem_mb_per_cpu=10000,
-        runtime=1000,
-        partition="zen4"
+        runtime=1000
     log:
         os.path.join(RESULTS_DIR, "logs", "02_align", "{sample}.log")
     envmodules:
-        "bwa-mem2/2.2.1-intel-compilers-2023.1.0",
+        "bwa-mem2/2.3-GCC-14.2.0",
         "SAMtools/1.18-GCC-12.3.0"
     shell:
         """
