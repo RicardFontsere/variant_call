@@ -22,7 +22,7 @@ rule align:
         os.path.join(RESULTS_DIR, "logs", "02_align", "{sample}.log")
     envmodules:
         "bwa-mem2/2.3-GCC-14.2.0",
-        "SAMtools/1.18-GCC-12.3.0"
+        "SAMtools/1.22.1-GCC-14.2.0"
     shell:
         """
         mkdir -p $(dirname {output.bam})
@@ -67,7 +67,7 @@ rule index_bam:
     log:
         os.path.join(RESULTS_DIR, "logs", "02_index_bam", "{sample}.log")
     envmodules:
-        "SAMtools/1.18-GCC-12.3.0"
+        "SAMtools/1.22.1-GCC-14.2.0"
     shell:
         """
         mkdir -p $(dirname {log})

@@ -42,11 +42,11 @@ rule kmer_analysis:
         cd {params.outdir}
         echo {input.r1} > input_files.txt
         echo {input.r2} >> input_files.txt
-        binaries/kmc_v3 \
+        {SOFTWARE_DIR}/kmc_v3 \
             -t{resources.cpus_per_task} -k31 -ci2 \
             @input_files.txt output_kmc_canon ./ \
             1> kmc_canon.1 2> kmc_canon.2
-        binaries/kmc_v3 \
+        {SOFTWARE_DIR}/kmc_v3 \
             -t{resources.cpus_per_task} -k31 -ci0 -b \
             @input_files.txt output_kmc_all ./ \
             1> kmc_all.1 2> kmc_all.2
@@ -77,7 +77,7 @@ rule add_strand_information:
     shell:
         """
         mkdir -p $(dirname {log})
-        binaries/kmers_add_strand_information \
+        {SOFTWARE_DIR}/kmers_add_strand_information \
             -c {params.canon_prefix} \
             -n {params.all_prefix} \
             -k 31 \
@@ -110,7 +110,7 @@ rule combine_kmers:
         mkdir -p $(dirname {output.kmers_list})
         mkdir -p $(dirname {log})
         paste <(printf '%s\\n' {input.strands}) <(printf '%s\\n' {params.samples}) > {output.kmers_list}
-        binaries/list_kmers_found_in_multiple_samples \
+        {SOFTWARE_DIR}/list_kmers_found_in_multiple_samples \
             -l {output.kmers_list} \
             -k 31 \
             --mac 3 \
@@ -143,7 +143,7 @@ rule build_kmers_table:
         """
         mkdir -p $(dirname {output.table})
         mkdir -p $(dirname {log})
-        binaries/build_kmers_table \
+        {SOFTWARE_DIR}/build_kmers_table \
             -l {input.kmers_list} \
             -k 31 \
             -a {input.combined} \
@@ -181,7 +181,7 @@ rule kmers_table_to_bed:
         echo -e "accession_id\\tphenotype_value" > {params.phenotype}
         awk -v mp="{params.male_pattern}" '{{print $2 "\\t" ($2~mp?1:2)}}' \
             {input.kmers_list} >> {params.phenotype}
-        binaries/kmers_table_to_bed \
+        {SOFTWARE_DIR}/kmers_table_to_bed \
             -t {params.table_prefix} \
             -k 31 \
             -p {params.phenotype} \
@@ -215,8 +215,8 @@ rule kmer_association:
         workdir = os.path.join(RESULTS_DIR, "06_kmer", "combined", "plink")
     resources:
         cpus_per_task=4,
-        mem_mb_per_cpu=16000,
-        runtime=1440
+        mem_mb_per_cpu=32000,
+        runtime=2000
     log:
         os.path.join(RESULTS_DIR, "logs", "06_kmer", "kmer_association.log")
     envmodules:

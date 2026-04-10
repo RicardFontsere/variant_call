@@ -11,6 +11,8 @@ REF_PREFIX = os.path.splitext(REFERENCE)[0]
 CHROM_PREFIX = config["chromosome_prefix"]
 CONTIG_PREFIX = config["contig_prefix"]
 INTERVALS_DIR = os.path.join(os.path.dirname(REFERENCE), "intervals")
+SOFTWARE_DIR = config["software_dir"]
+SCRIPTS_DIR = config["scripts_dir"]
 
 # Discover samples: subdirectories in READS_DIR
 SAMPLES = sorted([d for d in os.listdir(READS_DIR) if os.path.isdir(os.path.join(READS_DIR, d))])
