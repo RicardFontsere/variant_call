@@ -167,7 +167,7 @@ rule aggregate_snp_density_males:
         """
         mkdir -p $(dirname {output.avg})
         mkdir -p $(dirname {log})
-        python scripts/extract_snp_density.py \
+        python {SCRIPTS_DIR}/extract_snp_density.py \
             {input.normalized_files} \
             {output.avg} >> {log} 2>&1
         """
@@ -195,7 +195,7 @@ rule aggregate_snp_density_females:
         """
         mkdir -p $(dirname {output.avg})
         mkdir -p $(dirname {log})
-        python scripts/extract_snp_density.py \
+        python {SCRIPTS_DIR}/extract_snp_density.py \
             {input.normalized_files} \
             {output.avg} >> {log} 2>&1
         """
@@ -220,7 +220,7 @@ rule snp_density_fold_change:
     shell:
         """
         mkdir -p $(dirname {log})
-        python scripts/snpdensity_fold_change.py \
+        python {SCRIPTS_DIR}/snpdensity_fold_change.py \
             {input.females} \
             {input.males} \
             {output.fc} >> {log} 2>&1

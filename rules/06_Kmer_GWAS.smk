@@ -247,8 +247,8 @@ rule kmer_association:
         echo "Female-specific (F_A=0, F_U=1): $(wc -l < {output.female_assoc})" >> {log}
 
         # Convert to ABySS input
-        python3 scripts/plink_to_abyss_kmers.py {output.male_assoc} {output.male_abyss} 2>> {log}
-        python3 scripts/plink_to_abyss_kmers.py {output.female_assoc} {output.female_abyss} 2>> {log}
+        python3 {SCRIPTS_DIR}/plink_to_abyss_kmers.py {output.male_assoc} {output.male_abyss} 2>> {log}
+        python3 {SCRIPTS_DIR}/plink_to_abyss_kmers.py {output.female_assoc} {output.female_abyss} 2>> {log}
         """
 
 

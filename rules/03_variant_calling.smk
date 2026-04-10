@@ -514,7 +514,7 @@ rule compute_dp_thresholds:
     shell:
         """
         mkdir -p $(dirname {log})
-        python scripts/compute_dp_thresholds.py \
+        python {SCRIPTS_DIR}/compute_dp_thresholds.py \
             {input.dp_table} \
             {output.percentiles} \
             {output.histograms} \

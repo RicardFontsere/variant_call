@@ -137,7 +137,7 @@ rule cov_aggregate_males:
         """
         mkdir -p $(dirname {output.avg})
         mkdir -p $(dirname {log})
-        python scripts/extract_coverage.py \
+        python {SCRIPTS_DIR}/extract_coverage.py \
             {input.normalized_files} \
             {output.avg} >> {log} 2>&1
         """
@@ -165,7 +165,7 @@ rule cov_aggregate_females:
         """
         mkdir -p $(dirname {output.avg})
         mkdir -p $(dirname {log})
-        python scripts/extract_coverage.py \
+        python {SCRIPTS_DIR}/extract_coverage.py \
             {input.normalized_files} \
             {output.avg} >> {log} 2>&1
         """
@@ -190,7 +190,7 @@ rule cov_fold_change:
     shell:
         """
         mkdir -p $(dirname {log})
-        python scripts/coverage_fold_change.py \
+        python {SCRIPTS_DIR}/coverage_fold_change.py \
             {input.females} \
             {input.males} \
             {output.fc} >> {log} 2>&1
