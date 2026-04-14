@@ -129,7 +129,7 @@ rule gemma:
         mkdir -p $(dirname {log})
 
         cd {params.output_directory} && \
-        binaries/gemma-0.98.5-linux-static-AMD64 \
+        {SOFTWARE_DIR}/gemma-0.98.5-linux-static-AMD64 \
             -bfile {params.base_name_in} \
             -lm 4 \
             -o temp_output &> {log}
