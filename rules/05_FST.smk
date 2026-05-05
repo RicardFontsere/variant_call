@@ -122,14 +122,14 @@ rule fst_analysis:
     resources:
         cpus_per_task=1,
         mem_mb_per_cpu=400000,
-        runtime=6000
+        runtime=2400
     log:
         os.path.join(RESULTS_DIR, "logs", "05_fst", "fst_analysis.log")
     shell:
         """
         mkdir -p $(dirname {output.fst})
         mkdir -p $(dirname {log})
-        binaries/FSTest1.3 \
+        {SOFTWARE_DIR}/FSTest1.3 \
             --pop1 {input.males} \
             --pop2 {input.females} \
             --m 2 \

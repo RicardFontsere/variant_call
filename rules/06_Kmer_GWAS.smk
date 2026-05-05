@@ -237,9 +237,9 @@ rule kmer_association:
         sed -E 's/^[[:space:]]+//; s/[[:space:]]+/\\t/g' kmers.assoc > {output.assoc_clean} 2>> {log}
 
         # Male-specific: F_A=1 (all males have it), F_U=0 (no females have it)
-        awk -F'\\t' 'NR>1 && $5 == 1 && $6 == 0' {output.assoc_clean} > {output.male_assoc} 2>> {log}
+        awk -F'\\t' 'NR>1 && $5 >= 0.8 && $6 == 0' {output.assoc_clean} > {output.male_assoc} 2>> {log}
         # Female-specific: F_A=0 (no males have it), F_U=1 (all females have it)
-        awk -F'\\t' 'NR>1 && $5 == 0 && $6 == 1' {output.assoc_clean} > {output.female_assoc} 2>> {log}
+        awk -F'\\t' 'NR>1 && $5 == 0 && $6 >= 0.8' {output.assoc_clean} > {output.female_assoc} 2>> {log}
 
         # Log counts
         echo "Total associations: $(tail -n +2 {output.assoc_clean} | wc -l)" >> {log}

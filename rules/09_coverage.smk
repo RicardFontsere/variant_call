@@ -74,7 +74,7 @@ rule cov_calculate_coverage:
 
 rule cov_normalize:
     """
-    Normalize per-sample read counts by dividing by the genome-wide median.
+    Normalize per-sample read counts by dividing by the genome-wide median of each sample.
     Corrects for differences in sequencing depth across samples.
     Only retains windows on chromosomes matching the configured prefix.
 
