@@ -61,17 +61,20 @@ rule plink_pca:
     log:
         os.path.join(RESULTS_DIR, "logs", "04_pca", "plink_pca.log")
     envmodules:
-        "PLINK/2.00a3.7-foss-2022a"
+        "PLINK/2.00a3.7-foss-2022a",
+        "BCFtools/1.15.1-GCC-11.3.0"
     shell:
         """
         mkdir -p $(dirname {log})
+        N_SAMPLES=$(bcftools query -l {input.vcf} | wc -l)
+        N_PCS=$(( N_SAMPLES - 1 ))
         plink --bcf {input.vcf} \
             --double-id \
             --allow-extra-chr \
             --set-missing-var-ids @:# \
             --extract {input.prune_in} \
             --make-bed \
-            --pca \
+            --pca $N_PCS \
             --out {params.out_prefix} 2> {log}
         """
 
@@ -123,8 +126,8 @@ rule pca_plot:
             pca <- as_tibble(data.frame(pca, sex)) 
 
             # Calculate percentage variance explained
-            pve <- data.frame(PC = 1:min(6, length(eigenval)), 
-                              pve = eigenval[1:min(6, length(eigenval))] / sum(eigenval) * 100)
+            pve <- data.frame(PC = 1:length(eigenval),
+                              pve = eigenval / sum(eigenval) * 100)
 
             # Plot 1: Variance explained barplot
             a <- ggplot(pve, aes(PC, pve)) + 
@@ -136,12 +139,13 @@ rule pca_plot:
             ggsave("{output.variance_plot}", plot = a, width = 8, height = 6, dpi = 500);
             
             # Plot 2: PCA scatter plot (PC1 vs PC2)
-            b <- ggplot(pca, aes(PC1, PC2, col = sex)) + 
+            b <- ggplot(pca, aes(PC1, PC2, col = sex, label = ind)) +
                 geom_point(size = 3) +
+                ggrepel::geom_text_repel(size = 2.5, max.overlaps = Inf, show.legend = FALSE) +
                 scale_colour_manual(values = c("female" = "red", "male" = "blue"), na.value = "grey50") +
-                coord_equal() + 
+                coord_equal() +
                 theme_light() +
-                xlab(paste0("PC1 (", signif(pve$pve[1], 3), "%%)")) + 
+                xlab(paste0("PC1 (", signif(pve$pve[1], 3), "%%)")) +
                 ylab(paste0("PC2 (", signif(pve$pve[2], 3), "%%)")) +
                 ggtitle("PCA: PC1 vs PC2");
             ggsave("{output.pca_plot}", plot = b, width = 8, height = 8, dpi = 500);

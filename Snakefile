@@ -75,6 +75,8 @@ include: "rules/08_GWAS.smk"
 include: "rules/09_coverage.smk"
 #include: "rules/10_kmer_bb.smk"
 #include: "rules/11_kmer_coverage.smk"
+include: "rules/12_heterozygosity.smk"
+
 
 # =============================================================================
 # TARGET RULE
@@ -126,4 +128,5 @@ rule all:
 #        os.path.join(RESULTS_DIR, "11_kmer_coverage", "filtered", "ymers.assoc"),
 #        os.path.join(RESULTS_DIR, "11_kmer_coverage", "blast", "ymers_blast.out"),
 #        os.path.join(RESULTS_DIR, "11_kmer_coverage", "blast", "wmers_blast.out"),
-#
+        os.path.join(RESULTS_DIR, "12_hetero", "heterozygosity", "heterozygosity.done")
+
