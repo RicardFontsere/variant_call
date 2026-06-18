@@ -309,7 +309,12 @@ rule abyss_male:
     shell:
         """
         mkdir -p $(dirname {log})
-        ABYSS -k25 -c0 -e0 {input} -o {output} &> {log}
+        if [ -s {input} ]; then
+            ABYSS -k25 -c0 -e0 {input} -o {output} &> {log}
+        else
+            echo "Input {input} is empty - no male-specific k-mers to assemble; writing empty output." > {log}
+            touch {output}
+        fi
         """
 
 
@@ -332,7 +337,12 @@ rule abyss_female:
     shell:
         """
         mkdir -p $(dirname {log})
-        ABYSS -k25 -c0 -e0 {input} -o {output} &> {log}
+        if [ -s {input} ]; then
+            ABYSS -k25 -c0 -e0 {input} -o {output} &> {log}
+        else
+            echo "Input {input} is empty - no female-specific k-mers to assemble; writing empty output." > {log}
+            touch {output}
+        fi
         """
 
 
