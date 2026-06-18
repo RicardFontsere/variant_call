@@ -8,7 +8,7 @@
 # 4. SortVcf per interval -> sorted VCFs
 # 5. MergeVcfs -> raw.vcf
 # 6. VariantFiltration -> annotate filters
-# 7. SelectVariants -> apply filters + biallelic SNPs only
+# 7. SelectVariants -> apply filters 
 # 8. Convert to BCF + index
 # =============================================================================
 
@@ -322,15 +322,11 @@ rule filter_snps:
         vcf = os.path.join(RESULTS_DIR, "03_variants", "filtered_SNPs.vcf")
     params:
         QD = config["gatk_snp_filters"]["QD"],
-        DP_low = config["gatk_snp_filters"]["DP_low"],
-        DP_high = config["gatk_snp_filters"]["DP_high"],
         MQ = config["gatk_snp_filters"]["MQ"],
         FS = config["gatk_snp_filters"]["FS"],
         SOR = config["gatk_snp_filters"]["SOR"],
         MQRankSum_low = config["gatk_snp_filters"]["MQRankSum_low"],
-        MQRankSum_high = config["gatk_snp_filters"]["MQRankSum_high"],
-        ReadPosRankSum_low = config["gatk_snp_filters"]["ReadPosRankSum_low"],
-        ReadPosRankSum_high = config["gatk_snp_filters"]["ReadPosRankSum_high"]
+        ReadPosRankSum_low = config["gatk_snp_filters"]["ReadPosRankSum_low"]
     resources:
         cpus_per_task=1,
         mem_mb_per_cpu=8000,
@@ -347,17 +343,12 @@ rule filter_snps:
             -V {input.vcf} \
             -O {output.vcf} \
             --filter-name "QD_filter" --filter-expression "QD < {params.QD}" \
-            --filter-name "DP_low_filter" --filter-expression "DP < {params.DP_low}" \
-            --filter-name "DP_high_filter" --filter-expression "DP > {params.DP_high}" \
             --filter-name "MQ_filter" --filter-expression "MQ < {params.MQ}" \
             --filter-name "FS_filter" --filter-expression "FS > {params.FS}" \
             --filter-name "SOR_filter" --filter-expression "SOR > {params.SOR}" \
-            --filter-name "MQRankSum_low_filter" --filter-expression "MQRankSum < {params.MQRankSum_low}" \
-            --filter-name "MQRankSum_high_filter" --filter-expression "MQRankSum > {params.MQRankSum_high}" \
-            --filter-name "ReadPosRankSum_low_filter" --filter-expression "ReadPosRankSum < {params.ReadPosRankSum_low}" \
-            --filter-name "ReadPosRankSum_high_filter" --filter-expression "ReadPosRankSum > {params.ReadPosRankSum_high}" 2> {log}
+            --filter-name "MQRankSum_filter" --filter-expression "MQRankSum < {params.MQRankSum_low}" \
+            --filter-name "ReadPosRankSum_filter" --filter-expression "ReadPosRankSum < {params.ReadPosRankSum_low}" 2> {log}
         """
-
 
 rule filter_indels:
     """Apply hard filters to INDELs using thresholds from config."""
@@ -370,15 +361,9 @@ rule filter_indels:
         vcf = os.path.join(RESULTS_DIR, "03_variants", "filtered_INDELs.vcf")
     params:
         QD = config["gatk_indel_filters"]["QD"],
-        DP_low = config["gatk_indel_filters"]["DP_low"],
-        DP_high = config["gatk_indel_filters"]["DP_high"],
-        MQ = config["gatk_indel_filters"]["MQ"],
         FS = config["gatk_indel_filters"]["FS"],
         SOR = config["gatk_indel_filters"]["SOR"],
-        MQRankSum_low = config["gatk_indel_filters"]["MQRankSum_low"],
-        MQRankSum_high = config["gatk_indel_filters"]["MQRankSum_high"],
-        ReadPosRankSum_low = config["gatk_indel_filters"]["ReadPosRankSum_low"],
-        ReadPosRankSum_high = config["gatk_indel_filters"]["ReadPosRankSum_high"]
+        ReadPosRankSum_low = config["gatk_indel_filters"]["ReadPosRankSum_low"]
     resources:
         cpus_per_task=1,
         mem_mb_per_cpu=8000,
@@ -395,15 +380,9 @@ rule filter_indels:
             -V {input.vcf} \
             -O {output.vcf} \
             --filter-name "QD_filter" --filter-expression "QD < {params.QD}" \
-            --filter-name "DP_low_filter" --filter-expression "DP < {params.DP_low}" \
-            --filter-name "DP_high_filter" --filter-expression "DP > {params.DP_high}" \
-            --filter-name "MQ_filter" --filter-expression "MQ < {params.MQ}" \
             --filter-name "FS_filter" --filter-expression "FS > {params.FS}" \
             --filter-name "SOR_filter" --filter-expression "SOR > {params.SOR}" \
-            --filter-name "MQRankSum_low_filter" --filter-expression "MQRankSum < {params.MQRankSum_low}" \
-            --filter-name "MQRankSum_high_filter" --filter-expression "MQRankSum > {params.MQRankSum_high}" \
-            --filter-name "ReadPosRankSum_low_filter" --filter-expression "ReadPosRankSum < {params.ReadPosRankSum_low}" \
-            --filter-name "ReadPosRankSum_high_filter" --filter-expression "ReadPosRankSum > {params.ReadPosRankSum_high}" 2> {log}
+            --filter-name "ReadPosRankSum_filter" --filter-expression "ReadPosRankSum < {params.ReadPosRankSum_low}" 2> {log}
         """
 
 
@@ -447,102 +426,77 @@ rule merge_filtered_variants:
 
 
 # =============================================================================
-# GENOTYPE-LEVEL DEPTH FILTERING
+# GENOTYPE-LEVEL GQ EXTRACTION (for threshold inspection)
 #
-# Genotypes with DP outside the 5th-99th percentile range are set to no-call.
-# Thresholds are auto-computed from the data: global lower = median of
-# per-sample 5th percentiles, global upper = median of per-sample 99th pctl.
+# Extract per-sample genotype quality (GQ) per site into a wide table for
+# plotting in a notebook. Inspect the distribution, pick a GQ floor (20 lenient,
+# 30 stringent), then apply it in the genotype-filter step.
+# Missing genotypes (e.g. hom-ref with no GQ) appear as '.'.
 # =============================================================================
 
-
-rule extract_genotype_dp:
+rule extract_genotype_gq:
     """
-    Extract per-sample genotype depth (DP) from site-filtered VCF.
-    Output is a tab-delimited table: one column per sample, one row per site.
+    Extract per-sample GQ from the site-filtered VCF.
+    Wide TSV: one column per sample, one row per site. Loadable with pandas.
     """
     input:
         vcf = os.path.join(RESULTS_DIR, "03_variants", "filtered_sites.vcf")
     output:
-        dp_table = os.path.join(RESULTS_DIR, "03_variants", "genotype_dp", "dp_table.tsv")
+        gq_table = os.path.join(RESULTS_DIR, "03_variants", "genotype_gq", "gq_table.tsv")
     resources:
         cpus_per_task=1,
         mem_mb_per_cpu=8000,
         runtime=120
     log:
-        os.path.join(RESULTS_DIR, "logs", "03_variant_filtration", "extract_dp.log")
+        os.path.join(RESULTS_DIR, "logs", "03_variant_filtration", "extract_gq.log")
     envmodules:
         "BCFtools/1.18-GCC-12.3.0"
     shell:
         """
-        mkdir -p $(dirname {output.dp_table})
+        mkdir -p $(dirname {output.gq_table})
         mkdir -p $(dirname {log})
 
         # Header: sample names
         bcftools query -l {input.vcf} | tr '\\n' '\\t' | \
-            sed 's/\\t$/\\n/' > {output.dp_table} 2> {log}
+            sed 's/\\t$/\\n/' > {output.gq_table} 2> {log}
 
-        # Body: per-sample DP values
-        bcftools query -f '[%DP\\t]\\n' {input.vcf} | \
-            sed 's/\\t$//' >> {output.dp_table} 2>> {log}
+        # Body: per-sample GQ values
+        bcftools query -f '[%GQ\\t]\\n' {input.vcf} | \
+            sed 's/\\t$//' >> {output.gq_table} 2>> {log}
         """
 
 
-rule compute_dp_thresholds:
-    """
-    Compute per-sample DP percentiles and auto-select global thresholds.
-    Global lower = median of per-sample 5th percentiles (floored).
-    Global upper = median of per-sample 99th percentiles (ceiled).
-
-    Diagnostic outputs for notebook:
-      - dp_percentiles.tsv: per-sample stats
-      - dp_histograms.tsv: per-sample binned distributions
-    Pipeline output:
-      - dp_thresholds.tsv: DP_lower and DP_upper for the filter step
-    """
-    input:
-        dp_table = os.path.join(RESULTS_DIR, "03_variants", "genotype_dp", "dp_table.tsv")
+rule write_batch_groups:
     output:
-        percentiles = os.path.join(RESULTS_DIR, "03_variants", "genotype_dp", "dp_percentiles.tsv"),
-        histograms = os.path.join(RESULTS_DIR, "03_variants", "genotype_dp", "dp_histograms.tsv"),
-        thresholds = os.path.join(RESULTS_DIR, "03_variants", "genotype_dp", "dp_thresholds.tsv")
-    resources:
-        cpus_per_task=1,
-        mem_mb_per_cpu=16000,
-        runtime=60
-    log:
-        os.path.join(RESULTS_DIR, "logs", "03_variant_filtration", "compute_dp_thresholds.log")
-    shell:
-        """
-        mkdir -p $(dirname {log})
-        python {SCRIPTS_DIR}/compute_dp_thresholds.py \
-            {input.dp_table} \
-            {output.percentiles} \
-            {output.histograms} \
-            {output.thresholds} &> {log}
-        """
+        os.path.join(RESULTS_DIR, "03_variants", "batch_groups.tsv")
+    run:
+        with open(output[0], "w") as f:
+            for s, b in BATCH_MAP.items():
+                f.write(f"{s}\t{b}\n")
 
 
-rule apply_genotype_dp_filter:
+rule apply_genotype_gq_filter:
     """
-    Apply genotype depth filter using auto-computed thresholds.
-    Reads DP_lower and DP_upper from the thresholds file.
-    Marks genotypes outside the range, then sets them to no-call.
-    Converts final result to BCF and indexes.
+    Set genotypes with GQ below the config floor to no-call, then convert to BCF.
+    GQ is depth-aware, so one floor is batch-fair (see notebook for the cut).
+    Note: genotypes with missing GQ (e.g. some hom-ref) are left untouched by
+    JEXL (undefined -> not filtered), which is the intended behaviour.
     """
     input:
         vcf = os.path.join(RESULTS_DIR, "03_variants", "filtered_sites.vcf"),
-        thresholds = os.path.join(RESULTS_DIR, "03_variants", "genotype_dp", "dp_thresholds.tsv"),
         ref = REFERENCE,
         fai = REFERENCE + ".fai",
         dict = REF_PREFIX + ".dict"
     output:
         bcf = os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf")
+    params:
+        gq_min = config["genotype_gq_min"]
     resources:
         cpus_per_task=4,
         mem_mb_per_cpu=8000,
         runtime=120
     log:
-        os.path.join(RESULTS_DIR, "logs", "03_variant_filtration", "apply_genotype_dp_filter.log")
+        os.path.join(RESULTS_DIR, "logs", "03_variant_filtration", "apply_genotype_gq_filter.log")
     envmodules:
         "GATK/4.5.0.0-GCCcore-12.3.0-Java-17",
         "BCFtools/1.18-GCC-12.3.0"
@@ -550,19 +504,13 @@ rule apply_genotype_dp_filter:
         """
         mkdir -p $(dirname {log})
 
-        # Read thresholds from file
-        DP_LOWER=$(awk '$1=="DP_lower" {{print $2}}' {input.thresholds})
-        DP_UPPER=$(awk '$1=="DP_upper" {{print $2}}' {input.thresholds})
-
-        echo "Applying genotype DP filter: DP < $DP_LOWER || DP > $DP_UPPER" > {log}
-
-        # Step 1: Mark genotypes outside the DP range
+        # Step 1: Mark genotypes below the GQ floor
         gatk VariantFiltration \
             -R {input.ref} \
             -V {input.vcf} \
             -O {output.bcf}.tmp1.vcf \
-            --genotype-filter-expression "DP < $DP_LOWER || DP > $DP_UPPER" \
-            --genotype-filter-name "DP_${{DP_LOWER}}-${{DP_UPPER}}" 2>> {log}
+            --genotype-filter-expression "GQ < {params.gq_min}" \
+            --genotype-filter-name "GQ{params.gq_min}" 2> {log}
 
         # Step 2: Set filtered genotypes to no-call
         gatk SelectVariants \
@@ -578,3 +526,15 @@ rule apply_genotype_dp_filter:
         rm -f {output.bcf}.tmp1.vcf {output.bcf}.tmp1.vcf.idx \
               {output.bcf}.tmp2.vcf {output.bcf}.tmp2.vcf.idx
         """
+
+# Step 3: Recompute INFO from post-no-call genotypes, drop dead sites, convert + index
+        #   --trim-alt-alleles: remove ALTs no longer carried by any genotype
+        #   +fill-tags: refresh AC/AN/AF/F_MISSING (they were stale after no-calling)
+        #   drop AC==0 (now-monomorphic) and over-missing sites
+        bcftools view --trim-alt-alleles {output.bcf}.tmp2.vcf -Ou 2>> {log} \
+          | bcftools +fill-tags -Ou -- -t AN,AC,AF,F_MISSING 2>> {log} \
+          | bcftools view -e 'AC==0 || F_MISSING > 0.15' -Ob -o {output.bcf} 2>> {log}
+        bcftools index {output.bcf} 2>> {log}
+
+        rm -f {output.bcf}.tmp1.vcf {output.bcf}.tmp1.vcf.idx \
+              {output.bcf}.tmp2.vcf {output.bcf}.tmp2.vcf.idx

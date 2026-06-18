@@ -20,6 +20,15 @@ SAMPLES = sorted([d for d in os.listdir(READS_DIR) if os.path.isdir(os.path.join
 ML_SAMPLES = [s for s in SAMPLES if config["male_pattern"] in s]
 FL_SAMPLES = [s for s in SAMPLES if config["female_pattern"] in s]
 
+
+def get_batch_map(reads_dir):
+    """sample -> sequencing run (parent dir of the resolved symlink target)."""
+    return {
+        os.path.basename(link): os.path.basename(os.path.dirname(os.path.realpath(link).rstrip("/")))
+        for link in glob.glob(os.path.join(reads_dir, "*"))
+    }
+BATCH_MAP = get_batch_map(READS_DIR)
+
 # Discover intervals from pre-generated interval files
 def get_intervals(wildcards=None):
     """Get intervals after checkpoint completes."""
@@ -100,6 +109,8 @@ rule all:
         #VCF stats
         os.path.join(RESULTS_DIR, "03_variants", "diagnostics", "raw_SNPs.table"),
         os.path.join(RESULTS_DIR, "03_variants", "diagnostics", "raw_INDELs.table"),
+        os.path.join(RESULTS_DIR, "03_variants", "genotype_gq", "gq_table.tsv"),
+        os.path.join(RESULTS_DIR, "03_variants", "batch_groups.tsv"),
         # Final joint-called variants
         os.path.join(RESULTS_DIR, "03_variants", "raw.vcf"),
         os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf"),

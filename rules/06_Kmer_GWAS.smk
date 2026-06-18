@@ -12,7 +12,45 @@
 # 8. BLAST assembled contigs against reference
 # =============================================================================
 
-
+rule fastp_kmer:
+    """
+    Preprocess BGI/MGI reads for the k-mer branch.
+    BGI/MGI libraries show non-random base composition in the first
+    ~10-15 bp (random-hexamer priming bias), which produces spurious
+    k-mers. fastp performs adapter + quality trimming and hard-crops the
+    first 15 bp of both mates.
+    """
+    input:
+        r1 = lambda wildcards: get_read_file(wildcards.sample, "1"),
+        r2 = lambda wildcards: get_read_file(wildcards.sample, "2")
+    output:
+        r1 = os.path.join(RESULTS_DIR, "01_trimmed", "{sample}_1_kmer.fq.gz"),
+        r2 = os.path.join(RESULTS_DIR, "01_trimmed", "{sample}_2_kmer.fq.gz"),
+        html = os.path.join(RESULTS_DIR, "00_qc", "{sample}_kmer.html"),
+        json = os.path.join(RESULTS_DIR, "00_qc", "{sample}_kmer.json")
+    params:
+        crop_front = 15
+    resources:
+        cpus_per_task=10,
+        mem_mb_per_cpu=2000,
+        runtime=120
+    log:
+        os.path.join(RESULTS_DIR, "logs", "kmer_gwas", "fastp_kmer_{sample}.log")
+    envmodules:
+        "fastp/1.0.1-GCC-13.3.0"
+    shell:
+        """
+        mkdir -p $(dirname {output.r1})
+        mkdir -p $(dirname {output.json})
+        mkdir -p $(dirname {log})
+        fastp \
+            -i {input.r1} -I {input.r2} \
+            -o {output.r1} -O {output.r2} \
+            --trim_front1 {params.crop_front} \
+            --trim_front2 {params.crop_front} \
+            --thread {resources.cpus_per_task} \
+            -j {output.json} -h {output.html} &> {log}
+        """
 
 rule kmer_analysis:
     """
@@ -20,8 +58,8 @@ rule kmer_analysis:
     Produces canonical (ci2) and all (ci0) k-mer databases.
     """
     input:
-        r1 = os.path.join(RESULTS_DIR, "01_trimmed", "{sample}_1.fq.gz"),
-        r2 = os.path.join(RESULTS_DIR, "01_trimmed", "{sample}_2.fq.gz")
+        r1 = os.path.join(RESULTS_DIR, "01_trimmed", "{sample}_1_kmer.fq.gz"),
+        r2 = os.path.join(RESULTS_DIR, "01_trimmed", "{sample}_2_kmer.fq.gz")
     output:
         canon = os.path.join(RESULTS_DIR, "06_kmer", "{sample}", "output_kmc_canon.kmc_pre"),
         all_kmers = os.path.join(RESULTS_DIR, "06_kmer", "{sample}", "output_kmc_all.kmc_pre")
