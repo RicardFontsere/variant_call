@@ -7,8 +7,10 @@ rule fastp:
         r1 = lambda wildcards: get_read_file(wildcards.sample, "1"),
         r2 = lambda wildcards: get_read_file(wildcards.sample, "2")
     output:
-        r1 = os.path.join(RESULTS_DIR, "01_trimmed", "{sample}_1.fq.gz"),
-        r2 = os.path.join(RESULTS_DIR, "01_trimmed", "{sample}_2.fq.gz"),
+        # temp(): deleted once rule align has consumed them. The QC html/json
+        # below are small and kept as the permanent QC record.
+        r1 = temp(os.path.join(RESULTS_DIR, "01_trimmed", "{sample}_1.fq.gz")),
+        r2 = temp(os.path.join(RESULTS_DIR, "01_trimmed", "{sample}_2.fq.gz")),
         html = os.path.join(RESULTS_DIR, "00_qc", "{sample}.html"),
         json = os.path.join(RESULTS_DIR, "00_qc", "{sample}.json")
     resources:

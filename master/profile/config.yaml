@@ -1,6 +1,11 @@
 jobs: 400  # max number of pending and running jobs
 latency-wait: 60  # seconds to wait after job finished (to account for file system latency)
 printshellcmds: True
+# Only file timestamps trigger re-runs. Without this, Snakemake 8's default
+# (mtime,params,input,software-env,code) makes any rule-file edit cascade back
+# into re-trimming reads that were deleted on purpose to save disk.
+rerun-triggers:
+     - mtime
 executor: cluster-generic
 cluster-generic-submit-cmd: >-
      sbatch

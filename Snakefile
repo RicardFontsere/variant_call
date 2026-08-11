@@ -98,9 +98,9 @@ rule all:
         REF_PREFIX + ".dict",
         # Intervals (checkpoint)
         INTERVALS_DIR,
-        # Trimmed reads
-        expand(os.path.join(RESULTS_DIR, "01_trimmed", "{sample}_1.fq.gz"), sample=SAMPLES),
-        expand(os.path.join(RESULTS_DIR, "01_trimmed", "{sample}_2.fq.gz"), sample=SAMPLES),
+        # NOTE: trimmed reads are deliberately NOT listed here. They are temp()
+        # intermediates: requesting them as targets would force fastp to re-run
+        # even when the .dedup.bam files derived from them already exist.
         # Aligned and processed BAMs
         expand(os.path.join(RESULTS_DIR, "02_aligned", "{sample}.dedup.bam"), sample=SAMPLES),
         expand(os.path.join(RESULTS_DIR, "02_aligned", "{sample}.dedup.bam.csi"), sample=SAMPLES),
