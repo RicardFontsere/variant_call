@@ -397,9 +397,15 @@ rule blast_male_kmers:
         mkdir -p $(dirname {output.blast})
         mkdir -p $(dirname {log})
         if [ -s {input.contigs} ]; then
-            blastn -query {input.contigs} -db {input.ref} \
-                -outfmt '6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen' \
-                -evalue 1e-5 \
+            blastn \
+                -query {input.contigs} \
+                -db {input.ref} \
+                -task blastn \
+                -perc_identity 80 \
+                -qcov_hsp_perc 80 \
+                -dust yes \
+                -outfmt "6 qseqid sseqid pident length qlen slen qstart qend sstart send evalue bitscore" \
+                -evalue 1e-10 \
                 -num_threads {resources.cpus_per_task} \
                 > {output.blast} 2> {log}
         else
@@ -421,7 +427,7 @@ rule blast_female_kmers:
         blast = os.path.join(RESULTS_DIR, "06_kmer", "combined", "blast", "female_blast.out")
     resources:
         cpus_per_task=4,
-        mem_mb_per_cpu=15000,
+        mem_mb_per_cpu=4000,
         runtime=240
     log:
         os.path.join(RESULTS_DIR, "logs", "06_kmer", "blast_female.log")
@@ -432,9 +438,17 @@ rule blast_female_kmers:
         mkdir -p $(dirname {output.blast})
         mkdir -p $(dirname {log})
         if [ -s {input.contigs} ]; then
-            blastn -query {input.contigs} -db {input.ref} \
-                -outfmt '6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen' \
-                -evalue 1e-5 \
+                    mkdir -p $(dirname {output.blast})
+        mkdir -p $(dirname {log})
+        if [ -s {input.contigs} ]; then
+            blastn \
+                -query {input.contigs} \
+                -db {input.ref} \
+                -task blastn \
+                -perc_identity \
+                -dust yes \
+                -outfmt "6 qseqid sseqid pident length qlen slen qstart qend sstart send evalue bitscore" \
+                -evalue 1e-10 \
                 -num_threads {resources.cpus_per_task} \
                 > {output.blast} 2> {log}
         else

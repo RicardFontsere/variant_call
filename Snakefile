@@ -84,7 +84,7 @@ include: "rules/08_GWAS.smk"
 include: "rules/09_coverage.smk"
 #include: "rules/10_kmer_bb.smk"
 #include: "rules/11_kmer_coverage.smk"
-include: "rules/12_heterozygosity.smk"
+include: "rules/12_heterozygosity.smk" #Working perfectly, finalized
 
 
 # =============================================================================
