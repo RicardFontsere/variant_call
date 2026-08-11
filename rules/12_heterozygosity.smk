@@ -8,8 +8,10 @@ rule heterozygosity_filter:
     params:
         sites      = os.path.join(RESULTS_DIR, "12_hetero", "heterozygosity", "passing_sites.txt"),
         vcf        = os.path.join(RESULTS_DIR, "12_hetero", "heterozygosity", "heterozygosity_filtered.vcf.gz"),
-        male_het   = temp(os.path.join(RESULTS_DIR, "12_hetero", "heterozygosity", "male_het.vcf.gz")),
-        female_hom = temp(os.path.join(RESULTS_DIR, "12_hetero", "heterozygosity", "female_hom.vcf.gz"))
+        # NOT temp(): that flag only works on output:, where it is silently
+        # ignored in params. These are cleaned up explicitly in the shell below.
+        male_het   = os.path.join(RESULTS_DIR, "12_hetero", "heterozygosity", "male_het.vcf.gz"),
+        female_hom = os.path.join(RESULTS_DIR, "12_hetero", "heterozygosity", "female_hom.vcf.gz")
     resources:
         cpus_per_task=1, mem_mb_per_cpu=8000, runtime=60
     log:
@@ -37,15 +39,23 @@ rule heterozygosity_filter:
 
         ISEC_DIR=$(dirname {params.sites})/isec_tmp
         bcftools isec -n=2 -p $ISEC_DIR {params.male_het} {params.female_hom} 2>> {log}
-        awk 'BEGIN{{OFS="\t"}}{{print $1,$2}}' $ISEC_DIR/sites.txt > {params.sites}
+        awk 'BEGIN{{OFS="\t"}}{{print $1,$2}}' $ISEC_DIR/sites.txt > {params.sites} 2>> {log}
 
-        TARGETS={params.sites}.gz
-        bgzip -c {params.sites} > $TARGETS
-        tabix -s1 -b2 -e2 $TARGETS
-        bcftools view -R $TARGETS -Oz -o {params.vcf} {input.bcf} 2>> {log}
+        # Pass the sites file straight to -R: bcftools reads a plain
+        # tab-delimited regions file, so no bgzip/tabix is needed. The previous
+        # tabix step could not index this genome at all - TBI caps coordinates
+        # at 2^29 (~536.9 Mb) and these chromosomes run past that, giving
+        # "cannot be stored in a tbi index. Try using a csi index". Dropping the
+        # index also removes the dependency on bgzip/tabix being on PATH, which
+        # the BCFtools module does not guarantee.
+        bcftools view -R {params.sites} -Oz -o {params.vcf} {input.bcf} 2>> {log}
         bcftools index {params.vcf} 2>> {log}
 
-        rm -rf $ISEC_DIR $TARGETS ${{TARGETS}}.tbi
+        # temp() has no effect inside params:, so these intermediates (and the
+        # .csi indexes made above) must be removed explicitly.
+        rm -rf $ISEC_DIR \
+               {params.male_het} {params.male_het}.csi \
+               {params.female_hom} {params.female_hom}.csi
 
         touch {output.done}
         """
