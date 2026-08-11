@@ -346,8 +346,8 @@ rule filter_snps:
             --filter-name "MQ_filter" --filter-expression "MQ < {params.MQ}" \
             --filter-name "FS_filter" --filter-expression "FS > {params.FS}" \
             --filter-name "SOR_filter" --filter-expression "SOR > {params.SOR}" \
-            --filter-name "MQRankSum_filter" --filter-expression "MQRankSum < {params.MQRankSum_low}" \
-            --filter-name "ReadPosRankSum_filter" --filter-expression "ReadPosRankSum < {params.ReadPosRankSum_low}" 2> {log}
+            --filter-name "MQRankSum_low_filter" --filter-expression "MQRankSum < {params.MQRankSum_low}" \
+            --filter-name "ReadPosRankSum_low_filter" --filter-expression "ReadPosRankSum < {params.ReadPosRankSum_low}" 2> {log}
         """
 
 rule filter_indels:
@@ -382,7 +382,7 @@ rule filter_indels:
             --filter-name "QD_filter" --filter-expression "QD < {params.QD}" \
             --filter-name "FS_filter" --filter-expression "FS > {params.FS}" \
             --filter-name "SOR_filter" --filter-expression "SOR > {params.SOR}" \
-            --filter-name "ReadPosRankSum_filter" --filter-expression "ReadPosRankSum < {params.ReadPosRankSum_low}" 2> {log}
+            --filter-name "ReadPosRankSum_low_filter" --filter-expression "ReadPosRankSum < {params.ReadPosRankSum_low}" 2> {log}
         """
 
 
@@ -474,13 +474,11 @@ rule write_batch_groups:
             for s, b in BATCH_MAP.items():
                 f.write(f"{s}\t{b}\n")
 
-
 rule apply_genotype_gq_filter:
     """
     Set genotypes with GQ below the config floor to no-call, then convert to BCF.
     GQ is depth-aware, so one floor is batch-fair (see notebook for the cut).
-    Note: genotypes with missing GQ (e.g. some hom-ref) are left untouched by
-    JEXL (undefined -> not filtered), which is the intended behaviour.
+    After no-calling, INFO tags are refreshed and now-dead sites are dropped.
     """
     input:
         vcf = os.path.join(RESULTS_DIR, "03_variants", "filtered_sites.vcf"),
@@ -519,15 +517,7 @@ rule apply_genotype_gq_filter:
             --set-filtered-gt-to-nocall \
             -O {output.bcf}.tmp2.vcf 2>> {log}
 
-        # Step 3: Convert to BCF and index
-        bcftools view {output.bcf}.tmp2.vcf -Ob -o {output.bcf} 2>> {log}
-        bcftools index {output.bcf} 2>> {log}
-
-        rm -f {output.bcf}.tmp1.vcf {output.bcf}.tmp1.vcf.idx \
-              {output.bcf}.tmp2.vcf {output.bcf}.tmp2.vcf.idx
-        """
-
-# Step 3: Recompute INFO from post-no-call genotypes, drop dead sites, convert + index
+        # Step 3: Recompute INFO from post-no-call genotypes, drop dead sites, convert + index
         #   --trim-alt-alleles: remove ALTs no longer carried by any genotype
         #   +fill-tags: refresh AC/AN/AF/F_MISSING (they were stale after no-calling)
         #   drop AC==0 (now-monomorphic) and over-missing sites
@@ -538,3 +528,5 @@ rule apply_genotype_gq_filter:
 
         rm -f {output.bcf}.tmp1.vcf {output.bcf}.tmp1.vcf.idx \
               {output.bcf}.tmp2.vcf {output.bcf}.tmp2.vcf.idx
+        """
+

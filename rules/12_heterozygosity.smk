@@ -39,7 +39,7 @@ rule heterozygosity_filter:
         bcftools isec -n=2 -p $ISEC_DIR {params.male_het} {params.female_hom} 2>> {log}
         awk 'BEGIN{{OFS="\t"}}{{print $1,$2}}' $ISEC_DIR/sites.txt > {params.sites}
 
-        TARGETS={params.sites}
+        TARGETS={params.sites}.gz
         bgzip -c {params.sites} > $TARGETS
         tabix -s1 -b2 -e2 $TARGETS
         bcftools view -R $TARGETS -Oz -o {params.vcf} {input.bcf} 2>> {log}

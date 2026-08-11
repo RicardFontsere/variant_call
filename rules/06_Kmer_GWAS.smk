@@ -309,7 +309,12 @@ rule abyss_male:
     shell:
         """
         mkdir -p $(dirname {log})
-        ABYSS -k25 -c0 -e0 {input} -o {output} &> {log}
+        if [ -s {input} ]; then
+            ABYSS -k25 -c0 -e0 {input} -o {output} &> {log}
+        else
+            echo "Input {input} is empty - ...; writing empty output." > {log}
+            touch {output}
+        fi
         """
 
 
@@ -332,7 +337,12 @@ rule abyss_female:
     shell:
         """
         mkdir -p $(dirname {log})
-        ABYSS -k25 -c0 -e0 {input} -o {output} &> {log}
+        if [ -s {input} ]; then
+            ABYSS -k25 -c0 -e0 {input} -o {output} &> {log}
+        else
+            echo "Input {input} is empty - ...; writing empty output." > {log}
+            touch {output}
+        fi
         """
 
 
@@ -381,11 +391,16 @@ rule blast_male_kmers:
         """
         mkdir -p $(dirname {output.blast})
         mkdir -p $(dirname {log})
-        blastn -query {input.contigs} -db {input.ref} \
-            -outfmt '6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen' \
-            -evalue 1e-5 \
-            -num_threads {resources.cpus_per_task} \
-            > {output.blast} 2> {log}
+        if [ -s {input.contigs} ]; then
+            blastn -query {input.contigs} -db {input.ref} \
+                -outfmt '6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen' \
+                -evalue 1e-5 \
+                -num_threads {resources.cpus_per_task} \
+                > {output.blast} 2> {log}
+        else
+            echo "Input {input.contigs} is empty - no contigs to BLAST; writing empty output." > {log}
+            touch {output.blast}
+        fi
         """
 
 
@@ -411,9 +426,14 @@ rule blast_female_kmers:
         """
         mkdir -p $(dirname {output.blast})
         mkdir -p $(dirname {log})
-        blastn -query {input.contigs} -db {input.ref} \
-            -outfmt '6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen' \
-            -evalue 1e-5 \
-            -num_threads {resources.cpus_per_task} \
-            > {output.blast} 2> {log}
+        if [ -s {input.contigs} ]; then
+            blastn -query {input.contigs} -db {input.ref} \
+                -outfmt '6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen' \
+                -evalue 1e-5 \
+                -num_threads {resources.cpus_per_task} \
+                > {output.blast} 2> {log}
+        else
+            echo "Input {input.contigs} is empty - no contigs to BLAST; writing empty output." > {log}
+            touch {output.blast}
+        fi
         """
