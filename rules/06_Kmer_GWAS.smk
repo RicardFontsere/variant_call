@@ -21,8 +21,11 @@ rule fastp_kmer:
     first 15 bp of both mates.
     """
     input:
-        r1 = lambda wildcards: get_read_file(wildcards.sample, "1"),
-        r2 = lambda wildcards: get_read_file(wildcards.sample, "2")
+        # ancient(): see rule fastp in 01_trimming.smk - raw FASTQs are too
+        # large to checksum, so a bumped mtime alone would re-trigger the
+        # whole k-mer branch.
+        r1 = lambda wildcards: ancient(get_read_file(wildcards.sample, "1")),
+        r2 = lambda wildcards: ancient(get_read_file(wildcards.sample, "2"))
     output:
         # temp(): deleted once rule kmer_analysis has consumed them. The QC
         # html/json below are small and kept as the permanent QC record.
