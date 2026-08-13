@@ -7,9 +7,9 @@
 # 3. GenotypeGVCFs per interval -> VCFs
 # 4. SortVcf per interval -> sorted VCFs
 # 5. MergeVcfs -> raw.vcf
-# 6. VariantFiltration -> annotate filters
-# 7. SelectVariants -> apply filters 
-# 8. Convert to BCF + index
+# 6. SelectVariants (SNPs) + VariantFiltration -> filtered_sites.vcf
+# 7. Genotype-level GQ filter -> no-call failing genotypes
+# 8. Convert to BCF + index -> filtered.bcf
 # =============================================================================
 
 rule haplotypecaller:
@@ -236,90 +236,41 @@ rule extract_indel_table:
         rm -f {output.table}.tmp.vcf {output.table}.tmp.vcf.idx
         """
 # =============================================================================
-# 03b - VARIANT FILTRATION
+# 03b - VARIANT FILTRATION (SNPs only)
 #
 # Workflow:
-# 1. SelectVariants to split raw.vcf into SNPs and INDELs
-# 2. VariantFiltration with type-specific thresholds from config
-# 3. MergeVcfs to combine filtered SNPs and INDELs (site-level filtering)
-# 4. Extract per-sample genotype depth (DP) from site-filtered BCF
-# 5. Auto-compute global DP thresholds (median of per-sample 5th/99th pctl)
-# 6. Apply genotype-level DP filter and set failed genotypes to no-call
-# 7. Final output: filtered.bcf
+# 1. Single site-level step straight off raw.vcf:
+#    SelectVariants (SNPs only) -> VariantFiltration (config thresholds)
+#    -> keep PASS  => filtered_sites.vcf
+# 2. Extract per-sample genotype quality (GQ) from the site-filtered VCF
+# 3. Apply the genotype-level GQ floor, set failed genotypes to no-call,
+#    refresh INFO tags and drop dead sites
+# 4. Final output: filtered.bcf
+#
+# INDELs are dropped at step 1, so there is no separate INDEL branch and no
+# SNP/INDEL merge. The raw_INDELs.table diagnostic above is still produced --
+# it is inspection-only and never feeds the filtering path.
 #
 # Diagnostic outputs for notebook:
-#   - genotype_dp/dp_percentiles.tsv: per-sample percentile summary
-#   - genotype_dp/dp_histograms.tsv: per-sample depth distributions (binned)
+#   - genotype_gq/gq_table.tsv: per-sample GQ per site (wide TSV)
 # =============================================================================
 
 
-rule select_snps:
-    """Extract SNPs from raw VCF."""
-    input:
-        vcf = os.path.join(RESULTS_DIR, "03_variants", "raw.vcf"),
-        ref = REFERENCE,
-        fai = REFERENCE + ".fai",
-        dict = REF_PREFIX + ".dict"
-    output:
-        vcf = os.path.join(RESULTS_DIR, "03_variants", "raw_SNPs.vcf")
-    resources:
-        cpus_per_task=1,
-        mem_mb_per_cpu=8000,
-        runtime=120
-    log:
-        os.path.join(RESULTS_DIR, "logs", "03_variant_filtration", "select_snps.log")
-    envmodules:
-        "GATK/4.5.0.0-GCCcore-12.3.0-Java-17"
-    shell:
-        """
-        mkdir -p $(dirname {output.vcf})
-        mkdir -p $(dirname {log})
-        gatk SelectVariants \
-            -R {input.ref} \
-            -V {input.vcf} \
-            --select-type-to-include SNP \
-            -O {output.vcf} 2> {log}
-        """
-
-
-rule select_indels:
-    """Extract INDELs from raw VCF."""
-    input:
-        vcf = os.path.join(RESULTS_DIR, "03_variants", "raw.vcf"),
-        ref = REFERENCE,
-        fai = REFERENCE + ".fai",
-        dict = REF_PREFIX + ".dict"
-    output:
-        vcf = os.path.join(RESULTS_DIR, "03_variants", "raw_INDELs.vcf")
-    resources:
-        cpus_per_task=1,
-        mem_mb_per_cpu=8000,
-        runtime=120
-    log:
-        os.path.join(RESULTS_DIR, "logs", "03_variant_filtration", "select_indels.log")
-    envmodules:
-        "GATK/4.5.0.0-GCCcore-12.3.0-Java-17"
-    shell:
-        """
-        mkdir -p $(dirname {output.vcf})
-        mkdir -p $(dirname {log})
-        gatk SelectVariants \
-            -R {input.ref} \
-            -V {input.vcf} \
-            --select-type-to-include INDEL \
-            -O {output.vcf} 2> {log}
-        """
-
-
 rule filter_snps:
-    """Apply hard filters to SNPs using thresholds from config."""
+    """
+    Select SNPs from the raw VCF and apply the hard site filters in one step.
+
+    Emits filtered_sites.vcf so every downstream rule stays unchanged.
+    Only sites passing every filter survive.
+    """
     input:
-        vcf = os.path.join(RESULTS_DIR, "03_variants", "raw_SNPs.vcf"),
+        vcf = os.path.join(RESULTS_DIR, "03_variants", "raw.vcf"),
         ref = REFERENCE,
         fai = REFERENCE + ".fai",
         dict = REF_PREFIX + ".dict"
     output:
-        vcf = os.path.join(RESULTS_DIR, "03_variants", "filtered_SNPs.vcf")
+        vcf = temp(os.path.join(RESULTS_DIR, "03_variants", "filtered_sites.vcf")),
+        idx = temp(os.path.join(RESULTS_DIR, "03_variants", "filtered_sites.vcf.idx"))
     params:
         QD = config["gatk_snp_filters"]["QD"],
         MQ = config["gatk_snp_filters"]["MQ"],
@@ -334,94 +285,39 @@ rule filter_snps:
     log:
         os.path.join(RESULTS_DIR, "logs", "03_variant_filtration", "filter_snps.log")
     envmodules:
-        "GATK/4.5.0.0-GCCcore-12.3.0-Java-17"
+        "GATK/4.5.0.0-GCCcore-12.3.0-Java-17",
+        "BCFtools/1.18-GCC-12.3.0"
     shell:
         """
+        set -euo pipefail
+        mkdir -p $(dirname {output.vcf})
         mkdir -p $(dirname {log})
-        gatk VariantFiltration \
+
+        # 1. SNPs only, straight off the raw joint-called VCF
+        gatk SelectVariants \
             -R {input.ref} \
             -V {input.vcf} \
-            -O {output.vcf} \
+            --select-type-to-include SNP \
+            -O {output.vcf}.snps.vcf 2> {log}
+
+        # 2. Annotate the FILTER column with the config thresholds
+        gatk VariantFiltration \
+            -R {input.ref} \
+            -V {output.vcf}.snps.vcf \
+            -O {output.vcf}.marked.vcf \
             --filter-name "QD_filter" --filter-expression "QD < {params.QD}" \
             --filter-name "MQ_filter" --filter-expression "MQ < {params.MQ}" \
             --filter-name "FS_filter" --filter-expression "FS > {params.FS}" \
             --filter-name "SOR_filter" --filter-expression "SOR > {params.SOR}" \
             --filter-name "MQRankSum_low_filter" --filter-expression "MQRankSum < {params.MQRankSum_low}" \
-            --filter-name "ReadPosRankSum_low_filter" --filter-expression "ReadPosRankSum < {params.ReadPosRankSum_low}" 2> {log}
-        """
+            --filter-name "ReadPosRankSum_low_filter" --filter-expression "ReadPosRankSum < {params.ReadPosRankSum_low}" 2>> {log}
 
-rule filter_indels:
-    """Apply hard filters to INDELs using thresholds from config."""
-    input:
-        vcf = os.path.join(RESULTS_DIR, "03_variants", "raw_INDELs.vcf"),
-        ref = REFERENCE,
-        fai = REFERENCE + ".fai",
-        dict = REF_PREFIX + ".dict"
-    output:
-        vcf = os.path.join(RESULTS_DIR, "03_variants", "filtered_INDELs.vcf")
-    params:
-        QD = config["gatk_indel_filters"]["QD"],
-        FS = config["gatk_indel_filters"]["FS"],
-        SOR = config["gatk_indel_filters"]["SOR"],
-        ReadPosRankSum_low = config["gatk_indel_filters"]["ReadPosRankSum_low"]
-    resources:
-        cpus_per_task=1,
-        mem_mb_per_cpu=8000,
-        runtime=120
-    log:
-        os.path.join(RESULTS_DIR, "logs", "03_variant_filtration", "filter_indels.log")
-    envmodules:
-        "GATK/4.5.0.0-GCCcore-12.3.0-Java-17"
-    shell:
-        """
-        mkdir -p $(dirname {log})
-        gatk VariantFiltration \
-            -R {input.ref} \
-            -V {input.vcf} \
-            -O {output.vcf} \
-            --filter-name "QD_filter" --filter-expression "QD < {params.QD}" \
-            --filter-name "FS_filter" --filter-expression "FS > {params.FS}" \
-            --filter-name "SOR_filter" --filter-expression "SOR > {params.SOR}" \
-            --filter-name "ReadPosRankSum_low_filter" --filter-expression "ReadPosRankSum < {params.ReadPosRankSum_low}" 2> {log}
-        """
-
-
-rule merge_filtered_variants:
-    """
-    Merge filtered SNPs and INDELs back together.
-    Keep only sites that PASS all site-level filters.
-    This is an intermediate BCF before genotype-level filtering.
-    """
-    input:
-        snps = os.path.join(RESULTS_DIR, "03_variants", "filtered_SNPs.vcf"),
-        indels = os.path.join(RESULTS_DIR, "03_variants", "filtered_INDELs.vcf"),
-        dict = REF_PREFIX + ".dict"
-    output:
-        vcf = temp(os.path.join(RESULTS_DIR, "03_variants", "filtered_sites.vcf")),
-        idx = temp(os.path.join(RESULTS_DIR, "03_variants", "filtered_sites.vcf.idx"))
-    resources:
-        cpus_per_task=4,
-        mem_mb_per_cpu=4000,
-        runtime=120
-    log:
-        os.path.join(RESULTS_DIR, "logs", "03_variant_filtration", "merge_filtered.log")
-    envmodules:
-        "GATK/4.5.0.0-GCCcore-12.3.0-Java-17",
-        "BCFtools/1.18-GCC-12.3.0"
-    shell:
-        """
-        mkdir -p $(dirname {log})
-        
-        gatk MergeVcfs \
-            -I {input.snps} \
-            -I {input.indels} \
-            -D {input.dict} \
-            -O {output.vcf}.tmp.vcf 2> {log}
-        
-        bcftools view -f PASS {output.vcf}.tmp.vcf -Ov -o {output.vcf} 2>> {log}
+        # 3. Keep only sites that PASS every filter, then index
+        bcftools view -f PASS {output.vcf}.marked.vcf -Ov -o {output.vcf} 2>> {log}
         gatk IndexFeatureFile -I {output.vcf} 2>> {log}
-        
-        rm -f {output.vcf}.tmp.vcf {output.vcf}.tmp.vcf.idx
+
+        rm -f {output.vcf}.snps.vcf {output.vcf}.snps.vcf.idx \
+              {output.vcf}.marked.vcf {output.vcf}.marked.vcf.idx
         """
 
 
@@ -453,6 +349,7 @@ rule extract_genotype_gq:
         "BCFtools/1.18-GCC-12.3.0"
     shell:
         """
+        set -euo pipefail
         mkdir -p $(dirname {output.gq_table})
         mkdir -p $(dirname {log})
 
@@ -486,7 +383,8 @@ rule apply_genotype_gq_filter:
         fai = REFERENCE + ".fai",
         dict = REF_PREFIX + ".dict"
     output:
-        bcf = os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf")
+        bcf = os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf"),
+        csi = os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf.csi")
     params:
         gq_min = config["genotype_gq_min"]
     resources:
@@ -500,6 +398,7 @@ rule apply_genotype_gq_filter:
         "BCFtools/1.18-GCC-12.3.0"
     shell:
         """
+        set -euo pipefail
         mkdir -p $(dirname {log})
 
         # Step 1: Mark genotypes below the GQ floor
