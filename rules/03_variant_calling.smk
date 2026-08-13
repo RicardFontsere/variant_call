@@ -386,7 +386,11 @@ rule apply_genotype_gq_filter:
         bcf = os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf"),
         csi = os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf.csi")
     params:
-        gq_min = config["genotype_gq_min"]
+        gq_min = config["genotype_gq_min"],
+        # Drop a site if more than this fraction of samples end up no-called.
+        # NOTE: this is a fraction of ALL samples, so it gets harsh at small N --
+        # with 10 samples, 0.15 means at most one no-call per site survives.
+        max_f_missing = config.get("max_f_missing", 0.15)
     resources:
         cpus_per_task=4,
         mem_mb_per_cpu=8000,
@@ -419,10 +423,16 @@ rule apply_genotype_gq_filter:
         # Step 3: Recompute INFO from post-no-call genotypes, drop dead sites, convert + index
         #   --trim-alt-alleles: remove ALTs no longer carried by any genotype
         #   +fill-tags: refresh AC/AN/AF/F_MISSING (they were stale after no-calling)
-        #   drop AC==0 (now-monomorphic) and over-missing sites
+        #   -c1: keep only sites still carrying an ALT in some genotype. Counted
+        #        from the GT column, NOT from INFO/AC: --trim-alt-alleles has
+        #        already stripped the dead ALTs, so a fully no-called site has
+        #        nothing left for fill-tags to count and emits no AC at all --
+        #        an 'AC==0' test compares against a missing tag, evaluates false,
+        #        and lets exactly the dead sites it targets through.
+        #   drop over-missing sites
         bcftools view --trim-alt-alleles {output.bcf}.tmp2.vcf -Ou 2>> {log} \
           | bcftools +fill-tags -Ou -- -t AN,AC,AF,F_MISSING 2>> {log} \
-          | bcftools view -e 'AC==0 || F_MISSING > 0.15' -Ob -o {output.bcf} 2>> {log}
+          | bcftools view -c1 -e 'F_MISSING > {params.max_f_missing}' -Ob -o {output.bcf} 2>> {log}
         bcftools index {output.bcf} 2>> {log}
 
         rm -f {output.bcf}.tmp1.vcf {output.bcf}.tmp1.vcf.idx \
