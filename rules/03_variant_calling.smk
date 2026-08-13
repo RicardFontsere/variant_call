@@ -302,6 +302,14 @@ rule filter_snps:
             -O {output.vcf}.snps.vcf 2> {log}
 
         # 2. Annotate the FILTER column with the config thresholds
+        #
+        # JEXL warns once per record per rank-sum filter when the annotation is
+        # absent (hom-var sites have no ref reads to rank, so MQRankSum and
+        # ReadPosRankSum are legitimately missing). The site still PASSes that
+        # filter -- GATK defaults to --missing-values-evaluate-as-failing false
+        # -- so the warnings are noise, but at ~2 per record they reached 22 GB
+        # on a 120M-record callset. Drop them; everything else reaches the log,
+        # and a GATK failure still propagates through pipefail.
         gatk VariantFiltration \
             -R {input.ref} \
             -V {output.vcf}.snps.vcf \
@@ -312,7 +320,8 @@ rule filter_snps:
             --filter-name "FS_filter" --filter-expression "FS > {params.FS}" \
             --filter-name "SOR_filter" --filter-expression "SOR > {params.SOR}" \
             --filter-name "MQRankSum_low_filter" --filter-expression "MQRankSum < {params.MQRankSum_low}" \
-            --filter-name "ReadPosRankSum_low_filter" --filter-expression "ReadPosRankSum < {params.ReadPosRankSum_low}" 2>> {log}
+            --filter-name "ReadPosRankSum_low_filter" --filter-expression "ReadPosRankSum < {params.ReadPosRankSum_low}" 2>&1 \
+            | ( grep -v 'JexlEngine' || true ) >> {log}
 
         # 3. Keep only sites that PASS every filter, then index
         bcftools view -f PASS {output.vcf}.marked.vcf -Ov -o {output.vcf} 2>> {log}
