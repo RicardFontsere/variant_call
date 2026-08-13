@@ -388,9 +388,9 @@ rule apply_genotype_gq_filter:
     params:
         gq_min = config["genotype_gq_min"],
         # Drop a site if more than this fraction of samples end up no-called.
-        # NOTE: this is a fraction of ALL samples, so it gets harsh at small N --
-        # with 10 samples, 0.15 means at most one no-call per site survives.
-        max_f_missing = config.get("max_f_missing", 0.15)
+        # Fraction of ALL samples, so it bites hard at small N: with 10 samples
+        # 0.15 would keep only sites with at most one no-call.
+        max_f_missing = config.get("max_f_missing", 0.5)
     resources:
         cpus_per_task=4,
         mem_mb_per_cpu=8000,
