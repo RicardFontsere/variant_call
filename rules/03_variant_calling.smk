@@ -1,88 +1,3 @@
-import shlex
-
-# =============================================================================
-# SITE-FILTER ARGUMENT BUILDER
-#
-# Turns config["gatk_snp_filters"] into VariantFiltration arguments.
-#
-# Every value is validated at parse time rather than handed straight to the
-# shell, because both failure modes are silent otherwise:
-#   - an unrecognised key (DP instead of DP_max) drops a filter with no error
-#   - a value pasted from documentation can carry a typographic minus sign
-#     (U+2212), which is not ASCII '-' and makes GATK's JEXL reject it
-# Each argument is shell-quoted, so an expression containing '>' can never be
-# reinterpreted as a redirection.
-# =============================================================================
-
-# config key -> (FILTER name written into the VCF, JEXL expression template)
-SNP_FILTER_SPEC = {
-    "QD":                 ("QD_filter",                 "QD < {}"),
-    "QUAL":               ("QUAL_filter",               "QUAL < {}"),
-    "MQ":                 ("MQ_filter",                 "MQ < {}"),
-    "FS":                 ("FS_filter",                 "FS > {}"),
-    "SOR":                ("SOR_filter",                "SOR > {}"),
-    # Optional. Guards against collapsed paralogs, which pile reads from two
-    # loci onto one site and fake heterozygosity in every sample at once -- the
-    # dominant false positive for the male-het/female-hom test in
-    # 12_heterozygosity. Set to ~2x the MEDIAN INFO/DP in
-    # diagnostics/raw_SNPs.table (median, not mean: the repeat tail drags the
-    # mean up). INFO/DP is summed over all samples, so uneven per-sample
-    # coverage needs no adjustment.
-    "DP_max":             ("DP_filter",                 "DP > {}"),
-    "MQRankSum_low":      ("MQRankSum_low_filter",      "MQRankSum < {}"),
-    "ReadPosRankSum_low": ("ReadPosRankSum_low_filter", "ReadPosRankSum < {}"),
-}
-
-# Applied when the key is absent. Everything else is simply skipped, except the
-# keys listed in SNP_FILTER_REQUIRED.
-SNP_FILTER_DEFAULTS = {"QUAL": 30.0}
-SNP_FILTER_REQUIRED = ["QD", "MQ", "FS", "SOR", "MQRankSum_low", "ReadPosRankSum_low"]
-
-
-def build_snp_filter_args(cfg):
-    """Build shell-quoted --filter-name/--filter-expression pairs from config."""
-    unknown = sorted(set(cfg) - set(SNP_FILTER_SPEC))
-    if unknown:
-        raise ValueError(
-            "Unrecognised key(s) in config gatk_snp_filters: {}. "
-            "Valid keys are: {}. A misspelled key would otherwise be ignored "
-            "silently and its filter never applied.".format(
-                ", ".join(unknown), ", ".join(SNP_FILTER_SPEC)
-            )
-        )
-
-    missing = [k for k in SNP_FILTER_REQUIRED if k not in cfg]
-    if missing:
-        raise ValueError(
-            "Missing required key(s) in config gatk_snp_filters: {}".format(
-                ", ".join(missing)
-            )
-        )
-
-    args = []
-    for key, (name, template) in SNP_FILTER_SPEC.items():
-        if key not in cfg and key not in SNP_FILTER_DEFAULTS:
-            continue
-        raw = cfg.get(key, SNP_FILTER_DEFAULTS.get(key))
-        try:
-            # Normalising through float() guarantees the emitted token is plain
-            # ASCII, whatever the YAML held (quoted string, int, float).
-            value = float(raw)
-        except (TypeError, ValueError):
-            hint = ""
-            if "−" in str(raw):
-                hint = (" It contains U+2212 MINUS SIGN, not ASCII '-'"
-                        " -- retype it by hand rather than pasting.")
-            raise ValueError(
-                "config gatk_snp_filters.{} = {!r} is not a number.{}".format(
-                    key, raw, hint
-                )
-            )
-        args += ["--filter-name", name, "--filter-expression", template.format(value)]
-
-    return " ".join(shlex.quote(a) for a in args)
-
-
 # =============================================================================
 # 03 - VARIANT CALLING
 #
@@ -357,8 +272,13 @@ rule filter_snps:
         vcf = temp(os.path.join(RESULTS_DIR, "03_variants", "filtered_sites.vcf")),
         idx = temp(os.path.join(RESULTS_DIR, "03_variants", "filtered_sites.vcf.idx"))
     params:
-        # Validated and shell-quoted at parse time. See build_snp_filter_args.
-        filter_args = build_snp_filter_args(config["gatk_snp_filters"])
+        QD = config["gatk_snp_filters"]["QD"],
+        QUAL = config["gatk_snp_filters"].get("QUAL", 30.0),
+        MQ = config["gatk_snp_filters"]["MQ"],
+        FS = config["gatk_snp_filters"]["FS"],
+        SOR = config["gatk_snp_filters"]["SOR"],
+        MQRankSum_low = config["gatk_snp_filters"]["MQRankSum_low"],
+        ReadPosRankSum_low = config["gatk_snp_filters"]["ReadPosRankSum_low"]
     resources:
         cpus_per_task=1,
         mem_mb_per_cpu=8000,
@@ -386,7 +306,13 @@ rule filter_snps:
             -R {input.ref} \
             -V {output.vcf}.snps.vcf \
             -O {output.vcf}.marked.vcf \
-            {params.filter_args} 2>> {log}
+            --filter-name "QD_filter" --filter-expression "QD < {params.QD}" \
+            --filter-name "QUAL_filter" --filter-expression "QUAL < {params.QUAL}" \
+            --filter-name "MQ_filter" --filter-expression "MQ < {params.MQ}" \
+            --filter-name "FS_filter" --filter-expression "FS > {params.FS}" \
+            --filter-name "SOR_filter" --filter-expression "SOR > {params.SOR}" \
+            --filter-name "MQRankSum_low_filter" --filter-expression "MQRankSum < {params.MQRankSum_low}" \
+            --filter-name "ReadPosRankSum_low_filter" --filter-expression "ReadPosRankSum < {params.ReadPosRankSum_low}" 2>> {log}
 
         # 3. Keep only sites that PASS every filter, then index
         bcftools view -f PASS {output.vcf}.marked.vcf -Ov -o {output.vcf} 2>> {log}
