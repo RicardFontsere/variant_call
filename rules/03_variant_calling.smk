@@ -273,11 +273,29 @@ rule filter_snps:
         idx = temp(os.path.join(RESULTS_DIR, "03_variants", "filtered_sites.vcf.idx"))
     params:
         QD = config["gatk_snp_filters"]["QD"],
+        QUAL = config["gatk_snp_filters"].get("QUAL", 30.0),
         MQ = config["gatk_snp_filters"]["MQ"],
         FS = config["gatk_snp_filters"]["FS"],
         SOR = config["gatk_snp_filters"]["SOR"],
         MQRankSum_low = config["gatk_snp_filters"]["MQRankSum_low"],
-        ReadPosRankSum_low = config["gatk_snp_filters"]["ReadPosRankSum_low"]
+        ReadPosRankSum_low = config["gatk_snp_filters"]["ReadPosRankSum_low"],
+        # Opt-in max-depth filter. Collapsed paralogs -- two loci merged in the
+        # assembly -- pile reads from both onto one site and fake heterozygosity
+        # in every sample at once, which is the dominant false positive for the
+        # male-het/female-hom test in 12_heterozygosity.
+        #
+        # Set gatk_snp_filters.DP_max to ~2x the MEDIAN INFO/DP in
+        # diagnostics/raw_SNPs.table (median, not mean: the repeat tail drags
+        # the mean up and would make the cut too permissive). INFO/DP is the
+        # sum over all samples, so uneven per-sample coverage needs no
+        # adjustment. Leave unset and no depth filter is applied.
+        dp_max_arg = (
+            '--filter-name "DP_filter" --filter-expression "DP > {}"'.format(
+                config["gatk_snp_filters"]["DP_max"]
+            )
+            if config["gatk_snp_filters"].get("DP_max") is not None
+            else ""
+        )
     resources:
         cpus_per_task=1,
         mem_mb_per_cpu=8000,
@@ -306,9 +324,11 @@ rule filter_snps:
             -V {output.vcf}.snps.vcf \
             -O {output.vcf}.marked.vcf \
             --filter-name "QD_filter" --filter-expression "QD < {params.QD}" \
+            --filter-name "QUAL_filter" --filter-expression "QUAL < {params.QUAL}" \
             --filter-name "MQ_filter" --filter-expression "MQ < {params.MQ}" \
             --filter-name "FS_filter" --filter-expression "FS > {params.FS}" \
             --filter-name "SOR_filter" --filter-expression "SOR > {params.SOR}" \
+            {params.dp_max_arg} \
             --filter-name "MQRankSum_low_filter" --filter-expression "MQRankSum < {params.MQRankSum_low}" \
             --filter-name "ReadPosRankSum_low_filter" --filter-expression "ReadPosRankSum < {params.ReadPosRankSum_low}" 2>> {log}
 

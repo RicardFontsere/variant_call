@@ -3,10 +3,60 @@ reads_dir: "[Input Read Directory]"
 results_dir: "[Output Directory]"
 reference: "[Genome file path]"
 
+software_dir: "[Path to binaries/]"
+scripts_dir: "[Path to scripts/]"
+
 # Intervals for parallelization
 chromosome_prefix: "[Chromosome start pattern]"
 contig_prefix: "[Contig start pattern]"
 
-# Sex identification patterns 
+# Sex identification patterns
 male_pattern: "[pattern]"
 female_pattern: "[pattern]"
+
+# SNP density window size (bp)
+window_size: 10000
+
+# k-mer counting bounds (06_Kmer_GWAS)
+kmer_count_lower: 3
+kmer_count_upper: 11
+
+# =============================================================================
+# SITE-LEVEL HARD FILTERS (rule filter_snps)
+#
+# Values below are the GATK germline best-practice defaults. Tune them against
+# your own callset using 03_variants/diagnostics/raw_SNPs.table.
+# INDELs are dropped, so there is no gatk_indel_filters block.
+# =============================================================================
+gatk_snp_filters:
+  QD: 2.0
+  QUAL: 30.0
+  MQ: 40.0
+  FS: 60.0
+  SOR: 3.0
+  MQRankSum_low: -12.5
+  ReadPosRankSum_low: -8.0
+  # Optional. Guards against collapsed paralogs, which pile reads from two loci
+  # onto one site and fake heterozygosity in every sample -- the dominant false
+  # positive for the male-het/female-hom test in 12_heterozygosity.
+  # Set to ~2x the MEDIAN INFO/DP in diagnostics/raw_SNPs.table (median, not
+  # mean: the repeat tail drags the mean up). INFO/DP is summed over all
+  # samples, so uneven per-sample coverage needs no adjustment.
+  # Omit this key to skip the depth filter entirely.
+  # DP_max: 200
+
+# Do NOT add ExcessHet or InbreedingCoeff here. Both penalise heterozygote
+# excess, which is the sex-linkage signal this pipeline is looking for.
+
+# =============================================================================
+# GENOTYPE-LEVEL FILTERS (rule apply_genotype_gq_filter)
+# =============================================================================
+# Genotypes below this GQ are set to no-call. 20 lenient, 30 stringent.
+# Inspect 03_variants/genotype_gq/gq_table.tsv (notebooks/gq_histogram.ipynb).
+genotype_gq_min: 30
+
+# Drop a site if more than this fraction of ALL samples ends up no-called.
+# Small cohorts need a loose value: at 10 samples, 0.15 keeps only sites with
+# at most one no-call. Keep it loose if the sex chromosome is heteromorphic,
+# since hemizygous sites are missing in the homogametic sex by construction.
+max_f_missing: 0.5
