@@ -20,9 +20,19 @@ scripts_dir: "[scripts directory]"
 
 # Sex-specific k-mer set operations (rule sex_specific_kmers)
 # kmer_min_present: min copies for a k-mer to count as PRESENT in the sex it
-#                   is specific to (intersection side).
+#                   is specific to (intersection side). Raising it is the way
+#                   to make the call stricter; it is bounded by the coverage
+#                   of the LOWEST-coverage sample of that sex, since every
+#                   sample must clear it.
+# kmer_max_present: max copies on the same side - drops satellite/repeat
+#                   derived k-mers. Set to 0 to disable the cap. Never
+#                   applied to the subtraction side (see the rule docstring).
 # kmer_min_absent:  min copies for a k-mer to count as present in the other
 #                   sex, i.e. enough to disqualify it (subtraction side).
 #                   Keep at 1: a single read is enough to veto specificity.
-kmer_min_present: 3
+#                   Raising this LOOSENS the call, it does not tighten it.
+# All three are counts of a single oriented k-mer in the -b (both strands)
+# database, i.e. roughly half the depth of the underlying locus.
+kmer_min_present: 5
+kmer_max_present: 30
 kmer_min_absent: 1
