@@ -112,15 +112,27 @@ rule sex_specific_kmers:
     databases (no association test - with n=8 there is no power anyway,
     and this is a deterministic set membership question).
 
-        male-specific   = (intersection of all males, -ci3)
+        male-specific   = (intersection of all males, -ci5 -cx30)
                           - (union of all females, -ci1)
-        female-specific = (intersection of all females, -ci3)
+        female-specific = (intersection of all females, -ci5 -cx30)
                           - (union of all males, -ci1)
 
     Asymmetric -ci thresholds are deliberate: a k-mer must be solidly
-    present (>=3 copies) to count as present, but a SINGLE read is enough
-    to count as present on the subtraction side. This is what keeps
-    low-coverage samples from producing false "specific" k-mers.
+    present (>=kmer_min_present copies) to count as present, but a SINGLE
+    read is enough to count as present on the subtraction side. This is
+    what keeps low-coverage samples from producing false "specific" k-mers.
+
+    -cx (kmer_max_present) caps the count on the intersection side to drop
+    satellite/repeat-derived k-mers, which sail through the intersection
+    and pollute the assembly. It is applied to the PRESENT side ONLY, and
+    deliberately never to the subtraction side: an -cx there would make a
+    high-copy k-mer invisible in the other sex, so it would fail to veto
+    and would be reported as sex-specific - the exact opposite of the
+    intent. Set kmer_max_present to 0 to disable the cap.
+
+    Both bounds are counts of a single ORIENTED k-mer in a -b database
+    (see below), i.e. roughly half the locus depth. Budget accordingly if
+    you ever switch these rules to the canonical database.
 
     Uses output_kmc_all (built -ci0 -b) on BOTH sides. Do not mix with
     output_kmc_canon: that database is canonicalised and the k-mer
@@ -148,7 +160,8 @@ rule sex_specific_kmers:
         db_dir      = os.path.join(RESULTS_DIR, "06_kmer"),
         males       = ML_SAMPLES,
         females     = FL_SAMPLES,
-        min_present = config.get("kmer_min_present", 3),
+        min_present = config.get("kmer_min_present", 5),
+        max_present = config.get("kmer_max_present", 30),
         min_absent  = config.get("kmer_min_absent", 1)
     resources:
         cpus_per_task=8,
@@ -183,11 +196,27 @@ rule sex_specific_kmers:
             exit 1
         fi
 
+        # Count window for the intersection (present) side. -cx0 would mean
+        # "no k-mer may exceed 0 copies", so 0 is treated as "no cap" and the
+        # flag is omitted entirely rather than passed as -cx0.
+        PRESENT_PARAMS="-ci{params.min_present}"
+        if [ "{params.max_present}" -gt 0 ]; then
+            if [ "{params.max_present}" -le "{params.min_present}" ]; then
+                echo "ERROR: kmer_max_present ({params.max_present}) must be greater than" \
+                     "kmer_min_present ({params.min_present}); the window is empty." >&2
+                exit 1
+            fi
+            PRESENT_PARAMS="$PRESENT_PARAMS -cx{params.max_present}"
+        fi
+
         cd {params.workdir}
 
         echo "=== group assignment ===" > "$LOG"
         echo "males   ($MALES): $(echo $MALES | wc -w)"     >> "$LOG"
         echo "females ($FEMALES): $(echo $FEMALES | wc -w)" >> "$LOG"
+        echo "=== thresholds ===" >> "$LOG"
+        echo "present side (intersection): $PRESENT_PARAMS"  >> "$LOG"
+        echo "absent side  (subtraction):  -ci{params.min_absent}" >> "$LOG"
 
         # ---- build ops files -------------------------------------------
         build_ops () {{
@@ -198,7 +227,7 @@ rule sex_specific_kmers:
             echo "INPUT:" > "$ops"
             for s in $present; do
                 i=$((i+1))
-                echo "p$i = $DB/$s/output_kmc_all -ci{params.min_present}" >> "$ops"
+                echo "p$i = $DB/$s/output_kmc_all $PRESENT_PARAMS" >> "$ops"
                 p_terms="${{p_terms:+$p_terms*}}p$i"
             done
             i=0
