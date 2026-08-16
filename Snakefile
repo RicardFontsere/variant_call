@@ -14,6 +14,11 @@ INTERVALS_DIR = os.path.join(os.path.dirname(REFERENCE), "intervals")
 SOFTWARE_DIR = config["software_dir"]
 SCRIPTS_DIR = config["scripts_dir"]
 
+# kmc_tools ships with the KMC3 distribution but is NOT one of the kmersGWAS
+# helper binaries in binaries/, so it may live elsewhere than SOFTWARE_DIR.
+# Override with `kmc_tools: /path/to/kmc/bin/kmc_tools` in the config.
+KMC_TOOLS = config.get("kmc_tools", os.path.join(SOFTWARE_DIR, "kmc_tools"))
+
 # Discover samples: subdirectories in READS_DIR
 SAMPLES = sorted([d for d in os.listdir(READS_DIR) if os.path.isdir(os.path.join(READS_DIR, d))])
 
