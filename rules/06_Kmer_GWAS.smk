@@ -117,6 +117,14 @@ rule sex_specific_kmers:
         female-specific = (intersection of all females, -ci5 -cx30)
                           - (union of all males, -ci1)
 
+    Evaluated as a chain of pairwise `kmc_tools simple` operations rather
+    than one n-way `kmc_tools complex`: fold the intersection two databases
+    at a time, then subtract the other sex one sample at a time. The result
+    is identical, but only two databases are ever open at once, so peak
+    memory does not grow with cohort size. The n-way form OOM-killed on
+    8 samples at 64 GB - it holds every -ci0 database open simultaneously,
+    and those contain every sequencing-error k-mer, unfiltered.
+
     Asymmetric -ci thresholds are deliberate: a k-mer must be solidly
     present (>=kmer_min_present copies) to count as present, but a SINGLE
     read is enough to count as present on the subtraction side. This is
@@ -164,9 +172,13 @@ rule sex_specific_kmers:
         max_present = config.get("kmer_max_present", 30),
         min_absent  = config.get("kmer_min_absent", 1)
     resources:
+        # An 8-way `kmc_tools complex` over the -ci0 databases OOM-killed at
+        # 8x8000. The pairwise form below holds two databases open at a time
+        # regardless of sample count, so this is headroom rather than a
+        # requirement that grows with the cohort.
         cpus_per_task=8,
-        mem_mb_per_cpu=8000,
-        runtime=1440
+        mem_mb_per_cpu=16000,
+        runtime=2880
     log:
         os.path.join(RESULTS_DIR, "logs", "06_kmer", "sex_specific_kmers.log")
     envmodules:
@@ -218,41 +230,72 @@ rule sex_specific_kmers:
         echo "present side (intersection): $PRESENT_PARAMS"  >> "$LOG"
         echo "absent side  (subtraction):  -ci{params.min_absent}" >> "$LOG"
 
-        # ---- build ops files -------------------------------------------
-        build_ops () {{
-            # $1 = present-group samples, $2 = absent-group samples
-            # $3 = output database path,  $4 = ops file to write
-            local present="$1" absent="$2" outdb="$3" ops="$4"
-            local i=0 p_terms="" a_terms=""
-            echo "INPUT:" > "$ops"
-            for s in $present; do
-                i=$((i+1))
-                echo "p$i = $DB/$s/output_kmc_all $PRESENT_PARAMS" >> "$ops"
-                p_terms="${{p_terms:+$p_terms*}}p$i"
-            done
-            i=0
-            for s in $absent; do
-                i=$((i+1))
-                echo "a$i = $DB/$s/output_kmc_all -ci{params.min_absent}" >> "$ops"
-                a_terms="${{a_terms:+$a_terms+}}a$i"
-            done
-            echo "OUTPUT:" >> "$ops"
-            # The name left of '=' is the output database path, so each run
-            # writes straight to its own db - no shared result.kmc_* to rename.
-            echo "$outdb = ($p_terms)-($a_terms)" >> "$ops"
-            echo "OUTPUT_PARAMS:" >> "$ops"
-            echo "-ci1" >> "$ops"
+        # Leftovers from a previous failed attempt would otherwise be picked
+        # up by the intermediate names below.
+        rm -f ./*_step*.kmc_pre ./*_step*.kmc_suf
+
+        # ---- set operations, pairwise ----------------------------------
+        # Only ever removes our own *_step* intermediates, never a sample db.
+        drop_tmp () {{
+            case "${{1:-}}" in
+                *_step*) rm -f "$1.kmc_pre" "$1.kmc_suf" ;;
+            esac
         }}
 
-        build_ops "$MALES"   "$FEMALES" "$MALE_DB"   ops_male.txt
-        build_ops "$FEMALES" "$MALES"   "$FEMALE_DB" ops_female.txt
+        # $1 = present-group samples, $2 = absent-group samples
+        # $3 = final output database path, $4 = name tag for intermediates
+        build_set () {{
+            local present="$1" absent="$2" outdb="$3" tag="$4"
+            local step=0 cur="" cur_params="" nxt="" prev=""
 
-        echo "=== ops_male.txt ==="   >> "$LOG"; cat ops_male.txt   >> "$LOG"
-        echo "=== ops_female.txt ===" >> "$LOG"; cat ops_female.txt >> "$LOG"
+            # Present group: fold the intersection two databases at a time.
+            for s in $present; do
+                if [ -z "$cur" ]; then
+                    cur="$DB/$s/output_kmc_all"; cur_params="$PRESENT_PARAMS"
+                    continue
+                fi
+                step=$((step+1)); nxt="${{tag}}_step$step"
+                echo "+ intersect [$cur $cur_params] x [$s $PRESENT_PARAMS] -> $nxt" >> "$LOG"
+                {KMC_TOOLS} -t{resources.cpus_per_task} simple \
+                    "$cur" $cur_params \
+                    "$DB/$s/output_kmc_all" $PRESENT_PARAMS \
+                    intersect "$nxt" -ci1 >> "$LOG" 2>&1
+                drop_tmp "$prev"
+                prev="$nxt"; cur="$nxt"; cur_params="-ci1"
+            done
 
-        # ---- run set operations ----------------------------------------
-        {KMC_TOOLS} -t{resources.cpus_per_task} complex ops_male.txt   >> "$LOG" 2>&1
-        {KMC_TOOLS} -t{resources.cpus_per_task} complex ops_female.txt >> "$LOG" 2>&1
+            # Absent group: subtract one sample at a time. This is the same
+            # set as subtracting the union, because
+            #     A - (B1+B2+B3+B4) == (((A-B1)-B2)-B3)-B4
+            # but the union itself is never built. That matters: a union of
+            # unfiltered -ci0 databases is larger than any one of them, while
+            # the left operand here is the already-tiny intersection.
+            for s in $absent; do
+                step=$((step+1)); nxt="${{tag}}_step$step"
+                echo "+ subtract [$s -ci{params.min_absent}] from [$cur] -> $nxt" >> "$LOG"
+                {KMC_TOOLS} -t{resources.cpus_per_task} simple \
+                    "$cur" $cur_params \
+                    "$DB/$s/output_kmc_all" -ci{params.min_absent} \
+                    kmers_subtract "$nxt" -ci1 >> "$LOG" 2>&1
+                drop_tmp "$prev"
+                prev="$nxt"; cur="$nxt"; cur_params="-ci1"
+            done
+
+            # Guard against ever mv-ing a sample database: reachable only if
+            # both groups were empty, which the check above already rejects.
+            case "$cur" in
+                *_step*) ;;
+                *) echo "ERROR: no set operation ran for $tag; refusing to move $cur." >&2
+                   exit 1 ;;
+            esac
+            mv "$cur.kmc_pre" "$outdb.kmc_pre"
+            mv "$cur.kmc_suf" "$outdb.kmc_suf"
+        }}
+
+        echo "=== male set ===" >> "$LOG"
+        build_set "$MALES"   "$FEMALES" "$MALE_DB"   male
+        echo "=== female set ===" >> "$LOG"
+        build_set "$FEMALES" "$MALES"   "$FEMALE_DB" female
 
         # -ci1 on the dump side too: kmc_tools would otherwise apply the
         # database's own default cutoff and silently drop singleton k-mers.
