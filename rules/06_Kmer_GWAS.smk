@@ -427,8 +427,6 @@ rule blast_male_kmers:
                 -query {input.contigs} \
                 -db {input.ref} \
                 -task blastn \
-                -perc_identity 80 \
-                -qcov_hsp_perc 80 \
                 -dust yes \
                 -outfmt "6 qseqid sseqid pident length qlen slen qstart qend sstart send evalue bitscore" \
                 -evalue 1e-10 \
@@ -468,8 +466,6 @@ rule blast_female_kmers:
                 -query {input.contigs} \
                 -db {input.ref} \
                 -task blastn \
-                -perc_identity 80 \
-                -qcov_hsp_perc 80 \
                 -dust yes \
                 -outfmt "6 qseqid sseqid pident length qlen slen qstart qend sstart send evalue bitscore" \
                 -evalue 1e-10 \
