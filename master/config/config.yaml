@@ -36,3 +36,34 @@ scripts_dir: "[scripts directory]"
 kmer_min_present: 5
 kmer_max_present: 30
 kmer_min_absent: 1
+
+# =============================================================================
+# RNA-seq differential expression (rules 13-14, target `de_all`)
+# =============================================================================
+# Reads are expected to be already downloaded, one pair per sample, named
+# {sample}_1.fastq.gz and {sample}_2.fastq.gz. The sample names are what the
+# design files below must refer to.
+rna_reads_dir: "[RNAseq fastq directory]"
+rna_genome: "[Genome fasta the transcriptome is extracted from]"
+rna_gff: "[GFF annotation matching rna_genome]"
+
+# Bases cut from the 5' end of both mates (was HEADCROP:12 in Trimmomatic)
+rna_trim_front: 12
+
+# Transcript annotation, tab separated, one line per transcript, with the
+# columns: gid, gname, gproduct, chr, chr_id, start, end, length.
+# The effective length is added by the pipeline from the Salmon output.
+rna_annotation: "[Transcript annotation table]"
+
+# Directory holding {analysis}_design.txt and {analysis}_matrix.txt, and the
+# analyses to run (one edgeR run each)
+de_input_dir: "[DE design directory]"
+de_analyses: ["[analysis name]"]
+
+# edgeR settings: FDR threshold, test to use, whether to draw the heatmaps
+de_fdr: 0.05
+de_filtering: "fdr"
+de_heatmaps: "yes"
+
+# Module providing edgeR/limma/gplots/dynamicTreeCut on your cluster
+bioconductor_module: "R-bundle-Bioconductor/3.18-foss-2023a-R-4.3.2"

@@ -25,6 +25,28 @@ SAMPLES = sorted([d for d in os.listdir(READS_DIR) if os.path.isdir(os.path.join
 ML_SAMPLES = [s for s in SAMPLES if config["male_pattern"] in s]
 FL_SAMPLES = [s for s in SAMPLES if config["female_pattern"] in s]
 
+# --- RNA-seq differential expression (rules 13-14) ---------------------------
+# Only used by the `de_all` target; the variant calling rules never read them.
+RNA_READS_DIR = config.get("rna_reads_dir", "")
+RNA_GENOME = config.get("rna_genome", "")
+RNA_GFF = config.get("rna_gff", "")
+RNA_ANNOTATION = config.get("rna_annotation", "")
+RNA_TRIM_FRONT = config.get("rna_trim_front", 12)
+DE_INPUT_DIR = config.get("de_input_dir", "")
+DE_ANALYSES = config.get("de_analyses", [])
+DE_FDR = config.get("de_fdr", 0.05)
+DE_FILTERING = config.get("de_filtering", "fdr")
+DE_HEATMAPS = config.get("de_heatmaps", "yes")
+# edgeR comes from Bioconductor, which is a different module than the CRAN
+# bundle the other R rules use. Override it with the one your cluster provides.
+BIOCONDUCTOR_MODULE = config.get("bioconductor_module", "R-bundle-Bioconductor/3.18-foss-2023a-R-4.3.2")
+
+# RNA-seq samples: one pair per sample, {sample}_1.fastq.gz / {sample}_2.fastq.gz
+RNA_SAMPLES = sorted(
+    os.path.basename(f)[: -len("_1.fastq.gz")]
+    for f in glob.glob(os.path.join(RNA_READS_DIR, "*_1.fastq.gz"))
+)
+
 
 def get_batch_map(reads_dir):
     """sample -> sequencing run (parent dir of the resolved symlink target)."""
@@ -90,6 +112,9 @@ include: "rules/09_coverage.smk"
 #include: "rules/10_kmer_bb.smk"
 #include: "rules/11_kmer_coverage.smk"
 include: "rules/12_heterozygosity.smk" #Working perfectly, finalized
+# RNA-seq differential expression, run separately with the `de_all` target
+include: "rules/13_rnaseq_quant.smk"
+include: "rules/14_differential_expression.smk"
 
 
 # =============================================================================
