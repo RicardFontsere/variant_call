@@ -108,59 +108,36 @@ rule kmer_analysis:
 
 rule sex_specific_kmers:
     """
-    Extract strictly sex-specific k-mers by set operations on the KMC
-    databases (no association test - with n=8 there is no power anyway,
-    and this is a deterministic set membership question).
+    Strictly sex-specific k-mers by set operations on the KMC databases.
+    No association test: with n=8 there is no power, and "present in all
+    males, absent in all females" is a set-membership question.
 
-        male-specific   = (intersection of all males, -ci5)
-                          - (union of all females, -ci1)
-                          , then capped at -cx30 on the per-k-mer MINIMUM
-        female-specific = (intersection of all females, -ci5)
-                          - (union of all males, -ci1)
-                          , then capped at -cx30 on the per-k-mer MINIMUM
+        male-specific   = intersect(males,   -ci5) - union(females, -ci1)
+        female-specific = intersect(females, -ci5) - union(males,   -ci1)
+        both then capped at -cx30 on the per-k-mer MINIMUM count.
 
-    Evaluated as a chain of pairwise `kmc_tools simple` operations rather
-    than one n-way `kmc_tools complex`: fold the intersection two databases
-    at a time, then subtract the other sex one sample at a time. The result
-    is identical, but only two databases are ever open at once, so peak
-    memory does not grow with cohort size. The n-way form OOM-killed on
-    8 samples at 64 GB - it holds every -ci0 database open simultaneously,
-    and those contain every sequencing-error k-mer, unfiltered.
+    The thresholds are asymmetric on purpose: a k-mer must be solidly
+    present (>=kmer_min_present) in every sample of its own sex, but a
+    SINGLE read in one sample of the other sex disqualifies it.
 
-    Asymmetric -ci thresholds are deliberate: a k-mer must be solidly
-    present (>=kmer_min_present copies) to count as present, but a SINGLE
-    read is enough to count as present on the subtraction side. This is
-    what keeps low-coverage samples from producing false "specific" k-mers.
+    kmer_max_present drops repeat-derived k-mers. It is applied to the
+    minimum count across the present group - never per sample, never to
+    the subtraction side:
+      - per sample, one outlier vetoes the cohort (6/7/8/36 across four
+        males is dropped by the 36 alone, and on a Y that copy-number
+        variation is normal);
+      - on the subtraction side, a high-copy k-mer would go invisible in
+        the other sex, fail to veto, and be reported as specific.
+    Set it to 0 to disable.
 
-    -cx (kmer_max_present) drops satellite/repeat-derived k-mers, which
-    sail through the intersection and pollute the assembly. Two things
-    about where it is applied:
+    Evaluated as pairwise `kmc_tools simple` calls rather than one n-way
+    `complex`, so only two databases are open at a time regardless of
+    cohort size. The n-way form OOM-killed on 8 samples at 64 GB.
 
-      * Never to the subtraction side. An -cx there would make a high-copy
-        k-mer invisible in the other sex, so it would fail to veto and
-        would be reported as sex-specific - the exact opposite of the
-        intent.
-      * Not per sample on the present side either, because that lets one
-        outlier veto the whole cohort (6/7/8/36 across four males is
-        dropped by the 36). It is applied once at the end, to the minimum
-        count across the present group, which is what the final database's
-        counter holds. Satellites are high in every sample and still go;
-        single-sample copy-number blips survive.
-
-    Set kmer_max_present to 0 to disable the cap.
-
-    Both bounds are counts of a single ORIENTED k-mer in a -b database
-    (see below), i.e. roughly half the locus depth. Budget accordingly if
-    you ever switch these rules to the canonical database.
-
-    Uses output_kmc_all (built -ci0 -b) on BOTH sides. Do not mix with
-    output_kmc_canon: that database is canonicalised and the k-mer
-    representations are not comparable.
-
-    Because output_kmc_all is a both-strands (-b) database, a sex-specific
-    k-mer and its reverse complement both appear in the output. That is
-    self-consistent and harmless for ABySS, but it means the reported
-    counts are ~2x the number of distinct canonical k-mers.
+    Uses output_kmc_all (-ci0 -b) on both sides; output_kmc_canon is
+    canonicalised and not comparable with it. Being a both-strands
+    database, each k-mer and its reverse complement both appear: counts
+    are per oriented k-mer, roughly half the locus depth.
     """
     input:
         male_dbs = expand(
@@ -183,10 +160,8 @@ rule sex_specific_kmers:
         max_present = config.get("kmer_max_present", 30),
         min_absent  = config.get("kmer_min_absent", 1)
     resources:
-        # An 8-way `kmc_tools complex` over the -ci0 databases OOM-killed at
-        # 8x8000. The pairwise form below holds two databases open at a time
-        # regardless of sample count, so this is headroom rather than a
-        # requirement that grows with the cohort.
+        # Headroom, not a per-sample requirement: the pairwise form below
+        # holds two databases open whatever the cohort size.
         cpus_per_task=8,
         mem_mb_per_cpu=16000,
         runtime=2880
@@ -200,148 +175,112 @@ rule sex_specific_kmers:
         mkdir -p {params.workdir} $(dirname {output.male_kmers}) \
                  $(dirname {output.male_abyss}) $(dirname {log})
 
-        # Resolve everything to absolute paths BEFORE cd: {{log}} and the
-        # outputs are relative to the workflow root, not to params.workdir.
-        DB=$(realpath -m {params.db_dir})
-        LOG=$(realpath -m {log})
-        MALE_TXT=$(realpath -m {output.male_kmers})
-        FEMALE_TXT=$(realpath -m {output.female_kmers})
-        MALE_FA=$(realpath -m {output.male_abyss})
-        FEMALE_FA=$(realpath -m {output.female_abyss})
-        MALE_DB=$(realpath -m {params.workdir})/male_set
-        FEMALE_DB=$(realpath -m {params.workdir})/female_set
-
         MALES="{params.males}"
         FEMALES="{params.females}"
         if [ -z "$MALES" ] || [ -z "$FEMALES" ]; then
-            echo "ERROR: one of the sex groups is empty (males='$MALES' females='$FEMALES')." \
-                 "Check male_pattern/female_pattern in the config." >&2
+            echo "ERROR: a sex group is empty (males='$MALES' females='$FEMALES')." \
+                 "Check male_pattern/female_pattern." >&2
             exit 1
         fi
 
-        # Lower bound: applied per sample, because "present in this sample"
-        # is a per-sample question and every sample must answer yes.
-        PRESENT_PARAMS="-ci{params.min_present}"
-
-        # Upper bound: NOT applied per sample. A per-sample -cx makes any one
-        # outlier veto the k-mer for the whole cohort - counts of 6/7/8/36
-        # across four males would be dropped because of the 36 alone, even
-        # though three males put it squarely in range. On a Y that is the
-        # normal case, not an artefact: ampliconic regions vary in copy
-        # number between individuals.
-        # Instead the cap is applied once, at the end, to the MINIMUM count
-        # across the present group. intersect propagates the min (-ocmin
-        # below) and kmers_subtract keeps its left operand's counters, so the
-        # final database's counter is exactly that minimum. A real satellite
-        # is high in every sample, so its minimum is high and it is still
-        # removed; a single-sample copy-number blip has a low minimum and
-        # survives. -cx0 would mean "no k-mer may exceed 0 copies", so 0 is
-        # treated as "no cap" and the flag is omitted entirely.
+        # Upper bound is applied once, at the dump, to the minimum count
+        # across the present group - see the docstring. 0 means no cap.
         CAP=""
         if [ "{params.max_present}" -gt 0 ]; then
             if [ "{params.max_present}" -le "{params.min_present}" ]; then
-                echo "ERROR: kmer_max_present ({params.max_present}) must be greater than" \
+                echo "ERROR: kmer_max_present ({params.max_present}) must exceed" \
                      "kmer_min_present ({params.min_present}); the window is empty." >&2
                 exit 1
             fi
             CAP="-cx{params.max_present}"
         fi
 
+        # cd so kmc_tools scratch and the *_step* intermediates stay here.
+        # RESULTS_DIR is absolute, so {{log}} and the outputs still resolve.
         cd {params.workdir}
-
-        echo "=== group assignment ===" > "$LOG"
-        echo "males   ($MALES): $(echo $MALES | wc -w)"     >> "$LOG"
-        echo "females ($FEMALES): $(echo $FEMALES | wc -w)" >> "$LOG"
-        echo "=== thresholds ===" >> "$LOG"
-        echo "present side, per sample:      $PRESENT_PARAMS"       >> "$LOG"
-        echo "absent side,  per sample:      -ci{params.min_absent}" >> "$LOG"
-        echo "cap on min across present grp: ${{CAP:-none}}"        >> "$LOG"
-
-        # Leftovers from a previous failed attempt would otherwise be picked
-        # up by the intermediate names below.
         rm -f ./*_step*.kmc_pre ./*_step*.kmc_suf
 
-        # ---- set operations, pairwise ----------------------------------
-        # Only ever removes our own *_step* intermediates, never a sample db.
+        echo "=== group assignment ===" > {log}
+        echo "males   ($MALES): $(echo $MALES | wc -w)"     >> {log}
+        echo "females ($FEMALES): $(echo $FEMALES | wc -w)" >> {log}
+        echo "=== thresholds ===" >> {log}
+        echo "present, per sample:  -ci{params.min_present}" >> {log}
+        echo "absent,  per sample:  -ci{params.min_absent}"  >> {log}
+        echo "cap on min of present group: ${{CAP:-none}}"   >> {log}
+
+        # Never removes anything but our own intermediates.
         drop_tmp () {{
             case "${{1:-}}" in
                 *_step*) rm -f "$1.kmc_pre" "$1.kmc_suf" ;;
             esac
         }}
 
-        # $1 = present-group samples, $2 = absent-group samples
-        # $3 = final output database path, $4 = name tag for intermediates
+        # $1 present samples, $2 absent samples, $3 output db, $4 tag
         build_set () {{
             local present="$1" absent="$2" outdb="$3" tag="$4"
             local step=0 cur="" cur_params="" nxt="" prev=""
 
-            # Present group: fold the intersection two databases at a time.
+            # Fold the intersection two databases at a time. -ocmin keeps the
+            # minimum counter, which is what the cap is later applied to.
             for s in $present; do
                 if [ -z "$cur" ]; then
-                    cur="$DB/$s/output_kmc_all"; cur_params="$PRESENT_PARAMS"
+                    cur="{params.db_dir}/$s/output_kmc_all"
+                    cur_params="-ci{params.min_present}"
                     continue
                 fi
                 step=$((step+1)); nxt="${{tag}}_step$step"
-                echo "+ intersect [$cur $cur_params] x [$s $PRESENT_PARAMS] -> $nxt" >> "$LOG"
+                echo "+ intersect [$cur $cur_params] x [$s -ci{params.min_present}] -> $nxt" >> {log}
                 {KMC_TOOLS} -t{resources.cpus_per_task} simple \
                     "$cur" $cur_params \
-                    "$DB/$s/output_kmc_all" $PRESENT_PARAMS \
-                    intersect "$nxt" -ci1 -ocmin >> "$LOG" 2>&1
+                    "{params.db_dir}/$s/output_kmc_all" -ci{params.min_present} \
+                    intersect "$nxt" -ci1 -ocmin >> {log} 2>&1
                 drop_tmp "$prev"
                 prev="$nxt"; cur="$nxt"; cur_params="-ci1"
             done
 
-            # Absent group: subtract one sample at a time. This is the same
-            # set as subtracting the union, because
-            #     A - (B1+B2+B3+B4) == (((A-B1)-B2)-B3)-B4
-            # but the union itself is never built. That matters: a union of
-            # unfiltered -ci0 databases is larger than any one of them, while
-            # the left operand here is the already-tiny intersection.
+            # A - (B1+B2+B3+B4) == (((A-B1)-B2)-B3)-B4, so subtract one at a
+            # time and never build the union, which would be larger than any
+            # single database.
             for s in $absent; do
                 step=$((step+1)); nxt="${{tag}}_step$step"
-                echo "+ subtract [$s -ci{params.min_absent}] from [$cur] -> $nxt" >> "$LOG"
+                echo "+ subtract [$s -ci{params.min_absent}] from [$cur] -> $nxt" >> {log}
                 {KMC_TOOLS} -t{resources.cpus_per_task} simple \
                     "$cur" $cur_params \
-                    "$DB/$s/output_kmc_all" -ci{params.min_absent} \
-                    kmers_subtract "$nxt" -ci1 >> "$LOG" 2>&1
+                    "{params.db_dir}/$s/output_kmc_all" -ci{params.min_absent} \
+                    kmers_subtract "$nxt" -ci1 >> {log} 2>&1
                 drop_tmp "$prev"
                 prev="$nxt"; cur="$nxt"; cur_params="-ci1"
             done
 
-            # Guard against ever mv-ing a sample database: reachable only if
-            # both groups were empty, which the check above already rejects.
+            # Refuse to move a sample database if no operation ever ran.
             case "$cur" in
                 *_step*) ;;
-                *) echo "ERROR: no set operation ran for $tag; refusing to move $cur." >&2
-                   exit 1 ;;
+                *) echo "ERROR: no set operation ran for $tag." >&2; exit 1 ;;
             esac
             mv "$cur.kmc_pre" "$outdb.kmc_pre"
             mv "$cur.kmc_suf" "$outdb.kmc_suf"
         }}
 
-        echo "=== male set ===" >> "$LOG"
-        build_set "$MALES"   "$FEMALES" "$MALE_DB"   male
-        echo "=== female set ===" >> "$LOG"
-        build_set "$FEMALES" "$MALES"   "$FEMALE_DB" female
+        echo "=== male set ===" >> {log}
+        build_set "$MALES"   "$FEMALES" male_set   male
+        echo "=== female set ===" >> {log}
+        build_set "$FEMALES" "$MALES"   female_set female
 
-        # -ci1 so kmc_tools does not apply the database's own default cutoff
-        # and silently drop k-mers; $CAP applies the upper bound here, to the
-        # minimum count across the present group (see above).
-        {KMC_TOOLS} -t{resources.cpus_per_task} transform "$MALE_DB"   -ci1 $CAP dump "$MALE_TXT"   >> "$LOG" 2>&1
-        {KMC_TOOLS} -t{resources.cpus_per_task} transform "$FEMALE_DB" -ci1 $CAP dump "$FEMALE_TXT" >> "$LOG" 2>&1
+        # -ci1 stops kmc_tools applying the database's own cutoff; $CAP is the
+        # upper bound, hitting the minimum-across-present-group counter.
+        {KMC_TOOLS} -t{resources.cpus_per_task} transform male_set   -ci1 $CAP dump {output.male_kmers}   >> {log} 2>&1
+        {KMC_TOOLS} -t{resources.cpus_per_task} transform female_set -ci1 $CAP dump {output.female_kmers} >> {log} 2>&1
 
-        # ---- FASTA for ABySS -------------------------------------------
-        awk '{{printf ">m%d\n%s\n", NR, $1}}' "$MALE_TXT"   > "$MALE_FA"
-        awk '{{printf ">f%d\n%s\n", NR, $1}}' "$FEMALE_TXT" > "$FEMALE_FA"
+        awk '{{printf ">m%d\n%s\n", NR, $1}}' {output.male_kmers}   > {output.male_abyss}
+        awk '{{printf ">f%d\n%s\n", NR, $1}}' {output.female_kmers} > {output.female_abyss}
 
-        # ---- sanity ----------------------------------------------------
-        echo "=== counts ===" >> "$LOG"
-        echo "male-specific k-mers:   $(wc -l < "$MALE_TXT")"   >> "$LOG"
-        echo "female-specific k-mers: $(wc -l < "$FEMALE_TXT")" >> "$LOG"
+        echo "=== counts ===" >> {log}
+        echo "male-specific k-mers:   $(wc -l < {output.male_kmers})"   >> {log}
+        echo "female-specific k-mers: $(wc -l < {output.female_kmers})" >> {log}
         overlap=$(LC_ALL=C comm -12 \
-            <(cut -f1 "$MALE_TXT"   | LC_ALL=C sort) \
-            <(cut -f1 "$FEMALE_TXT" | LC_ALL=C sort) | wc -l)
-        echo "overlap (MUST be 0): $overlap" >> "$LOG"
+            <(cut -f1 {output.male_kmers}   | LC_ALL=C sort) \
+            <(cut -f1 {output.female_kmers} | LC_ALL=C sort) | wc -l)
+        echo "overlap (MUST be 0): $overlap" >> {log}
         if [ "$overlap" -ne 0 ]; then
             echo "ERROR: $overlap k-mers are in both sex-specific sets." >&2
             exit 1
