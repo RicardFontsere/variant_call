@@ -112,10 +112,12 @@ rule sex_specific_kmers:
     databases (no association test - with n=8 there is no power anyway,
     and this is a deterministic set membership question).
 
-        male-specific   = (intersection of all males, -ci5 -cx30)
+        male-specific   = (intersection of all males, -ci5)
                           - (union of all females, -ci1)
-        female-specific = (intersection of all females, -ci5 -cx30)
+                          , then capped at -cx30 on the per-k-mer MINIMUM
+        female-specific = (intersection of all females, -ci5)
                           - (union of all males, -ci1)
+                          , then capped at -cx30 on the per-k-mer MINIMUM
 
     Evaluated as a chain of pairwise `kmc_tools simple` operations rather
     than one n-way `kmc_tools complex`: fold the intersection two databases
@@ -130,13 +132,22 @@ rule sex_specific_kmers:
     read is enough to count as present on the subtraction side. This is
     what keeps low-coverage samples from producing false "specific" k-mers.
 
-    -cx (kmer_max_present) caps the count on the intersection side to drop
-    satellite/repeat-derived k-mers, which sail through the intersection
-    and pollute the assembly. It is applied to the PRESENT side ONLY, and
-    deliberately never to the subtraction side: an -cx there would make a
-    high-copy k-mer invisible in the other sex, so it would fail to veto
-    and would be reported as sex-specific - the exact opposite of the
-    intent. Set kmer_max_present to 0 to disable the cap.
+    -cx (kmer_max_present) drops satellite/repeat-derived k-mers, which
+    sail through the intersection and pollute the assembly. Two things
+    about where it is applied:
+
+      * Never to the subtraction side. An -cx there would make a high-copy
+        k-mer invisible in the other sex, so it would fail to veto and
+        would be reported as sex-specific - the exact opposite of the
+        intent.
+      * Not per sample on the present side either, because that lets one
+        outlier veto the whole cohort (6/7/8/36 across four males is
+        dropped by the 36). It is applied once at the end, to the minimum
+        count across the present group, which is what the final database's
+        counter holds. Satellites are high in every sample and still go;
+        single-sample copy-number blips survive.
+
+    Set kmer_max_present to 0 to disable the cap.
 
     Both bounds are counts of a single ORIENTED k-mer in a -b database
     (see below), i.e. roughly half the locus depth. Budget accordingly if
@@ -208,17 +219,32 @@ rule sex_specific_kmers:
             exit 1
         fi
 
-        # Count window for the intersection (present) side. -cx0 would mean
-        # "no k-mer may exceed 0 copies", so 0 is treated as "no cap" and the
-        # flag is omitted entirely rather than passed as -cx0.
+        # Lower bound: applied per sample, because "present in this sample"
+        # is a per-sample question and every sample must answer yes.
         PRESENT_PARAMS="-ci{params.min_present}"
+
+        # Upper bound: NOT applied per sample. A per-sample -cx makes any one
+        # outlier veto the k-mer for the whole cohort - counts of 6/7/8/36
+        # across four males would be dropped because of the 36 alone, even
+        # though three males put it squarely in range. On a Y that is the
+        # normal case, not an artefact: ampliconic regions vary in copy
+        # number between individuals.
+        # Instead the cap is applied once, at the end, to the MINIMUM count
+        # across the present group. intersect propagates the min (-ocmin
+        # below) and kmers_subtract keeps its left operand's counters, so the
+        # final database's counter is exactly that minimum. A real satellite
+        # is high in every sample, so its minimum is high and it is still
+        # removed; a single-sample copy-number blip has a low minimum and
+        # survives. -cx0 would mean "no k-mer may exceed 0 copies", so 0 is
+        # treated as "no cap" and the flag is omitted entirely.
+        CAP=""
         if [ "{params.max_present}" -gt 0 ]; then
             if [ "{params.max_present}" -le "{params.min_present}" ]; then
                 echo "ERROR: kmer_max_present ({params.max_present}) must be greater than" \
                      "kmer_min_present ({params.min_present}); the window is empty." >&2
                 exit 1
             fi
-            PRESENT_PARAMS="$PRESENT_PARAMS -cx{params.max_present}"
+            CAP="-cx{params.max_present}"
         fi
 
         cd {params.workdir}
@@ -227,8 +253,9 @@ rule sex_specific_kmers:
         echo "males   ($MALES): $(echo $MALES | wc -w)"     >> "$LOG"
         echo "females ($FEMALES): $(echo $FEMALES | wc -w)" >> "$LOG"
         echo "=== thresholds ===" >> "$LOG"
-        echo "present side (intersection): $PRESENT_PARAMS"  >> "$LOG"
-        echo "absent side  (subtraction):  -ci{params.min_absent}" >> "$LOG"
+        echo "present side, per sample:      $PRESENT_PARAMS"       >> "$LOG"
+        echo "absent side,  per sample:      -ci{params.min_absent}" >> "$LOG"
+        echo "cap on min across present grp: ${{CAP:-none}}"        >> "$LOG"
 
         # Leftovers from a previous failed attempt would otherwise be picked
         # up by the intermediate names below.
@@ -259,7 +286,7 @@ rule sex_specific_kmers:
                 {KMC_TOOLS} -t{resources.cpus_per_task} simple \
                     "$cur" $cur_params \
                     "$DB/$s/output_kmc_all" $PRESENT_PARAMS \
-                    intersect "$nxt" -ci1 >> "$LOG" 2>&1
+                    intersect "$nxt" -ci1 -ocmin >> "$LOG" 2>&1
                 drop_tmp "$prev"
                 prev="$nxt"; cur="$nxt"; cur_params="-ci1"
             done
@@ -297,10 +324,11 @@ rule sex_specific_kmers:
         echo "=== female set ===" >> "$LOG"
         build_set "$FEMALES" "$MALES"   "$FEMALE_DB" female
 
-        # -ci1 on the dump side too: kmc_tools would otherwise apply the
-        # database's own default cutoff and silently drop singleton k-mers.
-        {KMC_TOOLS} -t{resources.cpus_per_task} transform "$MALE_DB"   -ci1 dump "$MALE_TXT"   >> "$LOG" 2>&1
-        {KMC_TOOLS} -t{resources.cpus_per_task} transform "$FEMALE_DB" -ci1 dump "$FEMALE_TXT" >> "$LOG" 2>&1
+        # -ci1 so kmc_tools does not apply the database's own default cutoff
+        # and silently drop k-mers; $CAP applies the upper bound here, to the
+        # minimum count across the present group (see above).
+        {KMC_TOOLS} -t{resources.cpus_per_task} transform "$MALE_DB"   -ci1 $CAP dump "$MALE_TXT"   >> "$LOG" 2>&1
+        {KMC_TOOLS} -t{resources.cpus_per_task} transform "$FEMALE_DB" -ci1 $CAP dump "$FEMALE_TXT" >> "$LOG" 2>&1
 
         # ---- FASTA for ABySS -------------------------------------------
         awk '{{printf ">m%d\n%s\n", NR, $1}}' "$MALE_TXT"   > "$MALE_FA"
@@ -321,57 +349,67 @@ rule sex_specific_kmers:
         """
 
 
-rule abyss_male:
+rule abyss_sex:
     """
-    Assemble male-specific k-mers with ABySS.
+    Assemble sex-specific k-mers with ABySS. {sex} is male or female.
+
+    The input is the k-mer set itself, one 31-mer per FASTA record, so what
+    limits contig formation here is how densely those k-mers tile the
+    underlying region - not the assembler. Every k-mer lost upstream (to
+    kmer_min_present, to the cap, or to a single stray read in the other
+    sex) punches a hole in the tiling, and a hole wider than the assembly
+    k splits one contig into two. If contigs come back short, the k-mer
+    thresholds are usually the thing to revisit, not these parameters.
+
+    Overridable from the config:
+      abyss_k        assembly k, must be < 31. Lower bridges wider holes in
+                     the tiling, giving longer and fewer-broken contigs, at
+                     the cost of joining k-mers that share only abyss_k
+                     bases, which can be chimeric. 25 is the historical
+                     value; 21 is the first thing to try if the assembly is
+                     fragmented.
+      abyss_coverage -c, drop contigs below this mean k-mer coverage. The
+                     counts on these k-mers are set-operation minima, not
+                     assembly coverage, so filtering on them is not
+                     meaningful - leave at 0.
+      abyss_erode    -e, erode contig ends below this coverage. 0 = off.
+      abyss_trim     -t, longest dangling edge to trim. 0 keeps tips as
+                     contigs of their own rather than discarding them,
+                     which is what you want when every input k-mer has
+                     already passed the presence/absence filter.
+
+    abyss-fac output is appended to the log so parameter sweeps can be
+    compared directly (contig count, N50, max, total bp).
     """
     input:
-        os.path.join(RESULTS_DIR, "06_kmer", "combined", "assembly", "male_abyss.input")
+        os.path.join(RESULTS_DIR, "06_kmer", "combined", "assembly", "{sex}_abyss.input")
     output:
-        os.path.join(RESULTS_DIR, "06_kmer", "combined", "assembly", "male_abyss.output")
+        os.path.join(RESULTS_DIR, "06_kmer", "combined", "assembly", "{sex}_abyss.output")
+    params:
+        k        = config.get("abyss_k", 25),
+        coverage = config.get("abyss_coverage", 0),
+        erode    = config.get("abyss_erode", 0),
+        trim     = config.get("abyss_trim", 0)
+    wildcard_constraints:
+        sex = "male|female"
     resources:
         cpus_per_task=2,
         mem_mb_per_cpu=8000,
         runtime=120
     log:
-        os.path.join(RESULTS_DIR, "logs", "06_kmer", "abyss_male.log")
+        os.path.join(RESULTS_DIR, "logs", "06_kmer", "abyss_{sex}.log")
     envmodules:
         "ABySS/2.3.7-foss-2023a"
     shell:
         """
         mkdir -p $(dirname {log})
         if [ -s {input} ]; then
-            ABYSS -k25 -c0 -e0 {input} -o {output} &> {log}
+            ABYSS -k{params.k} -c{params.coverage} -e{params.erode} -t{params.trim} \
+                {input} -o {output} &> {log}
+            echo "=== abyss-fac (-k{params.k} -c{params.coverage} -e{params.erode} -t{params.trim}) ===" >> {log}
+            abyss-fac {output} >> {log} 2>&1 || true
         else
-            echo "Input {input} is empty - ...; writing empty output." > {log}
-            touch {output}
-        fi
-        """
-
-
-rule abyss_female:
-    """
-    Assemble female-specific k-mers with ABySS.
-    """
-    input:
-        os.path.join(RESULTS_DIR, "06_kmer", "combined", "assembly", "female_abyss.input")
-    output:
-        os.path.join(RESULTS_DIR, "06_kmer", "combined", "assembly", "female_abyss.output")
-    resources:
-        cpus_per_task=2,
-        mem_mb_per_cpu=8000,
-        runtime=120
-    log:
-        os.path.join(RESULTS_DIR, "logs", "06_kmer", "abyss_female.log")
-    envmodules:
-        "ABySS/2.3.7-foss-2023a"
-    shell:
-        """
-        mkdir -p $(dirname {log})
-        if [ -s {input} ]; then
-            ABYSS -k25 -c0 -e0 {input} -o {output} &> {log}
-        else
-            echo "Input {input} is empty - ...; writing empty output." > {log}
+            echo "Input {input} is empty - no k-mers to assemble; writing empty output." > {log}
             touch {output}
         fi
         """

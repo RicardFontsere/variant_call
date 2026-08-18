@@ -24,8 +24,11 @@ scripts_dir: "[scripts directory]"
 #                   to make the call stricter; it is bounded by the coverage
 #                   of the LOWEST-coverage sample of that sex, since every
 #                   sample must clear it.
-# kmer_max_present: max copies on the same side - drops satellite/repeat
-#                   derived k-mers. Set to 0 to disable the cap. Never
+# kmer_max_present: upper bound that drops satellite/repeat derived k-mers.
+#                   Applied to the MINIMUM count across the present group,
+#                   not per sample: counts of 6/7/8/36 across four males
+#                   keep the k-mer (minimum 6), while a satellite that is
+#                   high in every male does not. Set to 0 to disable. Never
 #                   applied to the subtraction side (see the rule docstring).
 # kmer_min_absent:  min copies for a k-mer to count as present in the other
 #                   sex, i.e. enough to disqualify it (subtraction side).
@@ -36,3 +39,18 @@ scripts_dir: "[scripts directory]"
 kmer_min_present: 5
 kmer_max_present: 30
 kmer_min_absent: 1
+
+# ABySS assembly of the sex-specific k-mers (rule abyss_sex)
+# abyss_k:        assembly k, must be < 31. Lower bridges wider holes in the
+#                 k-mer tiling (longer, less fragmented contigs) at the cost
+#                 of joining k-mers that share only abyss_k bases. Try 21 if
+#                 the assembly comes back fragmented.
+# abyss_coverage: -c, drop contigs below this mean coverage. Leave at 0: the
+#                 counts here are set-operation minima, not read coverage.
+# abyss_erode:    -e, erode contig ends below this coverage. 0 = off.
+# abyss_trim:     -t, longest dangling edge to trim. 0 keeps tips as their
+#                 own contigs rather than discarding them.
+abyss_k: 25
+abyss_coverage: 0
+abyss_erode: 0
+abyss_trim: 0
