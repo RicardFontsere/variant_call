@@ -14,11 +14,12 @@
 # males, absent in all females" is a deterministic set-membership question
 # that kmc_tools answers directly and far more cheaply.
 #
-# NOTE for the currently disabled modules 10_kmer_bb.smk and
-# 11_kmer_coverage.smk: they read {sex}_specific_kmers.assoc and take the
-# k-mer from column 2. The new outputs are {sex}_specific_kmers.txt with the
-# k-mer in column 1 (KMC dump format: kmer<TAB>count). Either adjust their
-# awk to `$1`, or point them at the ready-made FASTA {sex}_abyss.input.
+# The outputs are {sex}_specific_kmers.txt in KMC dump format
+# (kmer<TAB>count, k-mer in column 1), plus the ready-made FASTA
+# {sex}_abyss.input. 10_kmer_bb.smk reads the .txt dumps and is enabled.
+# NOTE for the still-disabled 11_kmer_coverage.smk: it reads
+# {sex}_specific_kmers.assoc and takes the k-mer from column 2, so its awk
+# needs adjusting to `$1` on the .txt before it can be switched back on.
 # =============================================================================
 
 rule fastp_kmer:

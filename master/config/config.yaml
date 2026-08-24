@@ -17,6 +17,10 @@ scripts_dir: "[scripts directory]"
 # kmc_tools is part of the KMC3 distribution, not of the kmersGWAS helper
 # binaries. Defaults to <software_dir>/kmc_tools; override if it lives elsewhere.
 #kmc_tools: "/path/to/kmc/bin/kmc_tools"
+# MEGAHIT (rule megahit_sexspecific, 10_kmer_bb.smk) is not a kmersGWAS
+# helper binary either. Defaults to the hard-coded path in that module;
+# override if it lives elsewhere.
+#megahit: "/path/to/megahit"
 
 # Sex-specific k-mer set operations (rule sex_specific_kmers)
 # kmer_min_present: min copies for a k-mer to count as PRESENT in the sex it

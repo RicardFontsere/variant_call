@@ -87,7 +87,7 @@ include: "rules/06_Kmer_GWAS.smk"
 include: "rules/07_snp_density.smk"
 include: "rules/08_GWAS.smk"
 include: "rules/09_coverage.smk"
-#include: "rules/10_kmer_bb.smk"
+include: "rules/10_kmer_bb.smk"
 #include: "rules/11_kmer_coverage.smk"
 include: "rules/12_heterozygosity.smk" #Working perfectly, finalized
 
@@ -106,6 +106,8 @@ rule all:
         # NOTE: trimmed reads are deliberately NOT listed here. They are temp()
         # intermediates: requesting them as targets would force fastp to re-run
         # even when the .dedup.bam files derived from them already exist.
+        # (10_kmer_bb consumes the same trimmed reads for BBDuk, so fastp does
+        # re-run for a sample whose trimmed reads were already cleaned up.)
         # Aligned and processed BAMs
         expand(os.path.join(RESULTS_DIR, "02_aligned", "{sample}.dedup.bam"), sample=SAMPLES),
         expand(os.path.join(RESULTS_DIR, "02_aligned", "{sample}.dedup.bam.csi"), sample=SAMPLES),
@@ -135,7 +137,7 @@ rule all:
         #M:F coverage
         os.path.join(RESULTS_DIR, "09_coverage", "results", "coverage_fc.csv"),
         #Kmer_BB
-        #expand(os.path.join(RESULTS_DIR, "10_kmer_bb", "blast", "{sex}_contigs_blast.out"), sex=["male", "female"]),
+        expand(os.path.join(RESULTS_DIR, "10_kmer_bb", "blast", "{sex}_contigs_blast.out"), sex=["male", "female"]),
         #Kmer_COV
 #        os.path.join(RESULTS_DIR, "11_kmer_coverage", "results", "male_samples_counts.tsv"),
 #        os.path.join(RESULTS_DIR, "11_kmer_coverage", "results", "female_samples_counts.tsv")
