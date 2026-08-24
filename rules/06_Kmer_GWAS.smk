@@ -156,15 +156,15 @@ rule sex_specific_kmers:
         db_dir      = os.path.join(RESULTS_DIR, "06_kmer"),
         males       = ML_SAMPLES,
         females     = FL_SAMPLES,
-        min_present = config.get("kmer_min_present", 5),
+        min_present = config.get("kmer_min_present", 4),
         max_present = config.get("kmer_max_present", 30),
         min_absent  = config.get("kmer_min_absent", 1)
     resources:
         # Headroom, not a per-sample requirement: the pairwise form below
         # holds two databases open whatever the cohort size.
-        cpus_per_task=8,
-        mem_mb_per_cpu=16000,
-        runtime=2880
+        cpus_per_task=6,
+        mem_mb_per_cpu=10000,
+        runtime=220
     log:
         os.path.join(RESULTS_DIR, "logs", "06_kmer", "sex_specific_kmers.log")
     envmodules:
@@ -177,11 +177,6 @@ rule sex_specific_kmers:
 
         MALES="{params.males}"
         FEMALES="{params.females}"
-        if [ -z "$MALES" ] || [ -z "$FEMALES" ]; then
-            echo "ERROR: a sex group is empty (males='$MALES' females='$FEMALES')." \
-                 "Check male_pattern/female_pattern." >&2
-            exit 1
-        fi
 
         # Upper bound is applied once, at the dump, to the minimum count
         # across the present group - see the docstring. 0 means no cap.
@@ -195,8 +190,6 @@ rule sex_specific_kmers:
             CAP="-cx{params.max_present}"
         fi
 
-        # cd so kmc_tools scratch and the *_step* intermediates stay here.
-        # RESULTS_DIR is absolute, so {{log}} and the outputs still resolve.
         cd {params.workdir}
         rm -f ./*_step*.kmc_pre ./*_step*.kmc_suf
 
@@ -325,7 +318,7 @@ rule abyss_sex:
     output:
         os.path.join(RESULTS_DIR, "06_kmer", "combined", "assembly", "{sex}_abyss.output")
     params:
-        k        = config.get("abyss_k", 25),
+        k        = config.get("abyss_k", 21),
         coverage = config.get("abyss_coverage", 0),
         erode    = config.get("abyss_erode", 0),
         trim     = config.get("abyss_trim", 0)
