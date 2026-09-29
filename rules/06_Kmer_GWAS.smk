@@ -2,17 +2,10 @@
 # 06 - SEX-SPECIFIC K-MERS (KMC set operations)
 #
 # Workflow:
-# 1. fastp preprocessing of the k-mer branch reads
 # 2. KMC3 k-mer counting (canonical + all) per sample
 # 3. kmc_tools set operations -> strictly sex-specific k-mers
 # 4. ABySS assembly of sex-specific k-mers
 # 5. BLAST assembled contigs against reference
-#
-# The kmersGWAS/PLINK association chain (add_strand_information ->
-# combine_kmers -> build_kmers_table -> kmers_table_to_bed -> PLINK --assoc)
-# was removed: with n=8 there is no association power, and "present in all
-# males, absent in all females" is a deterministic set-membership question
-# that kmc_tools answers directly and far more cheaply.
 #
 # The outputs are {sex}_specific_kmers.txt in KMC dump format
 # (kmer<TAB>count, k-mer in column 1), plus the ready-made FASTA
@@ -22,50 +15,6 @@
 # needs adjusting to `$1` on the .txt before it can be switched back on.
 # =============================================================================
 
-rule fastp_kmer:
-    """
-    Preprocess BGI/MGI reads for the k-mer branch.
-    BGI/MGI libraries show non-random base composition in the first
-    ~10-15 bp (random-hexamer priming bias), which produces spurious
-    k-mers. fastp performs adapter + quality trimming and hard-crops the
-    first 15 bp of both mates.
-    """
-    input:
-        # ancient(): see rule fastp in 01_trimming.smk - raw FASTQs are too
-        # large to checksum, so a bumped mtime alone would re-trigger the
-        # whole k-mer branch.
-        r1 = lambda wildcards: ancient(get_read_file(wildcards.sample, "1")),
-        r2 = lambda wildcards: ancient(get_read_file(wildcards.sample, "2"))
-    output:
-        # temp(): deleted once rule kmer_analysis has consumed them. The QC
-        # html/json below are small and kept as the permanent QC record.
-        r1 = temp(os.path.join(RESULTS_DIR, "01_trimmed", "{sample}_1_kmer.fq.gz")),
-        r2 = temp(os.path.join(RESULTS_DIR, "01_trimmed", "{sample}_2_kmer.fq.gz")),
-        html = os.path.join(RESULTS_DIR, "00_qc", "{sample}_kmer.html"),
-        json = os.path.join(RESULTS_DIR, "00_qc", "{sample}_kmer.json")
-    params:
-        crop_front = 15
-    resources:
-        cpus_per_task=10,
-        mem_mb_per_cpu=2000,
-        runtime=120
-    log:
-        os.path.join(RESULTS_DIR, "logs", "kmer_gwas", "fastp_kmer_{sample}.log")
-    envmodules:
-        "fastp/1.0.1-GCC-13.3.0"
-    shell:
-        """
-        mkdir -p $(dirname {output.r1})
-        mkdir -p $(dirname {output.json})
-        mkdir -p $(dirname {log})
-        fastp \
-            -i {input.r1} -I {input.r2} \
-            -o {output.r1} -O {output.r2} \
-            --trim_front1 {params.crop_front} \
-            --trim_front2 {params.crop_front} \
-            --thread {resources.cpus_per_task} \
-            -j {output.json} -h {output.html} &> {log}
-        """
 
 rule kmer_analysis:
     """
@@ -73,8 +22,8 @@ rule kmer_analysis:
     Produces canonical (ci2) and all (ci0) k-mer databases.
     """
     input:
-        r1 = os.path.join(RESULTS_DIR, "01_trimmed", "{sample}_1_kmer.fq.gz"),
-        r2 = os.path.join(RESULTS_DIR, "01_trimmed", "{sample}_2_kmer.fq.gz")
+        r1 = os.path.join(RESULTS_DIR, "01_trimmed", "{sample}_1.fq.gz"),
+        r2 = os.path.join(RESULTS_DIR, "01_trimmed", "{sample}_2.fq.gz")
     output:
         canon = os.path.join(RESULTS_DIR, "06_kmer", "{sample}", "output_kmc_canon.kmc_pre"),
         all_kmers = os.path.join(RESULTS_DIR, "06_kmer", "{sample}", "output_kmc_all.kmc_pre")
@@ -117,23 +66,13 @@ rule sex_specific_kmers:
         female-specific = intersect(females, -ci5) - union(males,   -ci1)
         both then capped at -cx30 on the per-k-mer MINIMUM count.
 
-    The thresholds are asymmetric on purpose: a k-mer must be solidly
-    present (>=kmer_min_present) in every sample of its own sex, but a
-    SINGLE read in one sample of the other sex disqualifies it.
-
     kmer_max_present drops repeat-derived k-mers. It is applied to the
     minimum count across the present group - never per sample, never to
     the subtraction side:
       - per sample, one outlier vetoes the cohort (6/7/8/36 across four
-        males is dropped by the 36 alone, and on a Y that copy-number
-        variation is normal);
+        males is dropped by the 36 alone)
       - on the subtraction side, a high-copy k-mer would go invisible in
         the other sex, fail to veto, and be reported as specific.
-    Set it to 0 to disable.
-
-    Evaluated as pairwise `kmc_tools simple` calls rather than one n-way
-    `complex`, so only two databases are open at a time regardless of
-    cohort size. The n-way form OOM-killed on 8 samples at 64 GB.
 
     Uses output_kmc_all (-ci0 -b) on both sides; output_kmc_canon is
     canonicalised and not comparable with it. Being a both-strands
@@ -161,11 +100,9 @@ rule sex_specific_kmers:
         max_present = config.get("kmer_max_present", 30),
         min_absent  = config.get("kmer_min_absent", 1)
     resources:
-        # Headroom, not a per-sample requirement: the pairwise form below
-        # holds two databases open whatever the cohort size.
         cpus_per_task=6,
         mem_mb_per_cpu=10000,
-        runtime=220
+        runtime=600
     log:
         os.path.join(RESULTS_DIR, "logs", "06_kmer", "sex_specific_kmers.log")
     envmodules:
@@ -284,16 +221,7 @@ rule sex_specific_kmers:
 
 rule abyss_sex:
     """
-    Assemble sex-specific k-mers with ABySS. {sex} is male or female.
-
-    The input is the k-mer set itself, one 31-mer per FASTA record, so what
-    limits contig formation here is how densely those k-mers tile the
-    underlying region - not the assembler. Every k-mer lost upstream (to
-    kmer_min_present, to the cap, or to a single stray read in the other
-    sex) punches a hole in the tiling, and a hole wider than the assembly
-    k splits one contig into two. If contigs come back short, the k-mer
-    thresholds are usually the thing to revisit, not these parameters.
-
+    Assemble sex-specific k-mers with ABySS.
     Overridable from the config:
       abyss_k        assembly k, must be < 31. Lower bridges wider holes in
                      the tiling, giving longer and fewer-broken contigs, at
@@ -319,7 +247,7 @@ rule abyss_sex:
     output:
         os.path.join(RESULTS_DIR, "06_kmer", "combined", "assembly", "{sex}_abyss.output")
     params:
-        k        = config.get("abyss_k", 21),
+        k        = config.get("abyss_k", 25),
         coverage = config.get("abyss_coverage", 0),
         erode    = config.get("abyss_erode", 0),
         trim     = config.get("abyss_trim", 0)

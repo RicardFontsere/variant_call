@@ -4,11 +4,6 @@
 
 rule fastp:
     input:
-        # ancient(): the raw FASTQs are >100 kB, so Snakemake never checksums
-        # them (io.py is_checksum_eligible) and falls back to mtime alone. Any
-        # re-sync or re-symlink of the source data then bumps their mtime and
-        # re-triggers fastp -> align -> the entire downstream pipeline.
-        # ancient() makes is_newer() return False, pinning that trigger off.
         r1 = lambda wildcards: ancient(get_read_file(wildcards.sample, "1")),
         r2 = lambda wildcards: ancient(get_read_file(wildcards.sample, "2"))
     output:

@@ -224,9 +224,9 @@ rule blast_contigs:
     wildcard_constraints:
         sex = "male|female"
     resources:
-        cpus_per_task=20,
-        mem_mb_per_cpu=36000,
-        runtime=4000
+        cpus_per_task=10,
+        mem_mb_per_cpu=15000,
+        runtime=4420
     log:
         os.path.join(RESULTS_DIR, "logs", "10_kmer_bb", "blast_{sex}_contigs.log")
     envmodules:
@@ -238,11 +238,10 @@ rule blast_contigs:
         blastn \
             -query {input.contigs} \
             -db {input.ref} \
-            -task megablast \
-            -word_size 30 \
-            -outfmt '6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen' \
+            -task blastn \
+            -dust yes \
+            -outfmt "6 qseqid sseqid pident length qlen slen qstart qend sstart send evalue bitscore" \
             -evalue 1e-50 \
-            -perc_identity 90 \
             -num_threads {resources.cpus_per_task} \
             -out {output.blast} 2> {log}
         """

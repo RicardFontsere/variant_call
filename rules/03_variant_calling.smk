@@ -62,7 +62,7 @@ rule genomicsdb_import:
     resources:
         cpus_per_task=4,
         mem_mb_per_cpu=8000,
-        runtime=1440
+        runtime=1840
     log:
         os.path.join(RESULTS_DIR, "logs", "03_genomicsdb_import", "{interval}.log")
     envmodules:
@@ -398,10 +398,7 @@ rule apply_genotype_gq_filter:
         csi = os.path.join(RESULTS_DIR, "03_variants", "filtered.bcf.csi")
     params:
         gq_min = config["genotype_gq_min"],
-        # Drop a site if more than this fraction of samples end up no-called.
-        # Fraction of ALL samples, so it bites hard at small N: with 10 samples
-        # 0.15 would keep only sites with at most one no-call.
-        max_f_missing = config.get("max_f_missing", 0.5)
+        max_f_missing = config.get("max_f_missing", 0.5) #drops site if >50% are no-call for that site
     resources:
         cpus_per_task=4,
         mem_mb_per_cpu=8000,
