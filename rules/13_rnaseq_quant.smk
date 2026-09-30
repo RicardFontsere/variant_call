@@ -1,8 +1,9 @@
 # =============================================================================
 # 13 - RNA-seq QUANTIFICATION (fastp + Salmon)
 #
-# The reads are already on disk, one pair per sample:
-#   {rna_reads_dir}/{sample}_1.fastq.gz and {rna_reads_dir}/{sample}_2.fastq.gz
+# The reads are already on disk, one directory per sample, laid out like the
+# DNA reads: {rna_reads_dir}/{sample}/*_1.fq.gz and *_2.fq.gz (or _R1/_R2,
+# .fastq.gz; see get_read_file in the Snakefile)
 #
 # fastp replaces the Trimmomatic + FastQC steps of the original pipeline: it
 # trims and reports the before/after metrics in one pass, and MultiQC reads its
@@ -16,11 +17,13 @@ rule rna_fastp:
     --cut_right, MINLEN:36 -> --length_required. Adapters are detected from the
     reads instead of being read from adapters.fasta.
     """
+    wildcard_constraints:
+        sample = RNA_SAMPLE_RE
     input:
         # ancient(): keeps a re-sync of the raw reads from re-running everything,
         # see the comment on rule fastp in 01_trimming.smk
-        r1 = ancient(os.path.join(RNA_READS_DIR, "{sample}_1.fastq.gz")),
-        r2 = ancient(os.path.join(RNA_READS_DIR, "{sample}_2.fastq.gz"))
+        r1 = lambda wildcards: ancient(get_read_file(wildcards.sample, "1", RNA_READS_DIR)),
+        r2 = lambda wildcards: ancient(get_read_file(wildcards.sample, "2", RNA_READS_DIR))
     output:
         # temp(): deleted once salmon_quant has consumed them, the json/html QC
         # reports are the permanent record
@@ -150,6 +153,8 @@ rule salmon_quant:
     """
     Quantify one sample. -l A lets salmon infer the library type.
     """
+    wildcard_constraints:
+        sample = RNA_SAMPLE_RE
     input:
         index_dir = os.path.join(RESULTS_DIR, "13_rnaseq", "reference", "salmon_index"),
         r1 = os.path.join(RESULTS_DIR, "13_rnaseq", "trimmed", "{sample}_1.fq.gz"),
