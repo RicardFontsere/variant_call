@@ -1,4 +1,5 @@
 import os
+import re
 import glob
 
 # =============================================================================
@@ -39,11 +40,15 @@ DE_HEATMAPS = config.get("de_heatmaps", "yes")
 # bundle the other R rules use. Override it with the one your cluster provides.
 BIOCONDUCTOR_MODULE = config.get("bioconductor_module", "R-bundle-Bioconductor/3.18-foss-2023a-R-4.3.2")
 
-# RNA-seq samples: one pair per sample, {sample}_1.fastq.gz / {sample}_2.fastq.gz
+# RNA-seq samples: subdirectories of RNA_READS_DIR, same layout as READS_DIR.
+# isdir() guard: the DNA-only runs must not fail on an unset rna_reads_dir.
 RNA_SAMPLES = sorted(
-    os.path.basename(f)[: -len("_1.fastq.gz")]
-    for f in glob.glob(os.path.join(RNA_READS_DIR, "*_1.fastq.gz"))
-)
+    d for d in os.listdir(RNA_READS_DIR)
+    if os.path.isdir(os.path.join(RNA_READS_DIR, d))
+) if os.path.isdir(RNA_READS_DIR) else []
+# {sample} in the RNA rules may only be one of these: otherwise the MultiQC
+# report (qc/multiqc_report.html) matches fastp's qc/{sample}.html.
+RNA_SAMPLE_RE = "|".join(re.escape(s) for s in RNA_SAMPLES) or "(?!)"
 
 
 def get_batch_map(reads_dir):
@@ -65,13 +70,14 @@ def get_intervals(wildcards=None):
 # =============================================================================
 # HELPER FUNCTIONS
 # =============================================================================
-def get_read_file(sample, read_num):
+def get_read_file(sample, read_num, reads_dir=None):
     """
     Find the reads for each sample.
     
     Args:
         sample: Sample directory name
         read_num: Either "1" or "2" for R1/R2
+        reads_dir: Directory holding the sample directories (default READS_DIR)
         
     Returns:
         Path to the read file
@@ -83,14 +89,15 @@ def get_read_file(sample, read_num):
         f"*_{read_num}.fq.gz"
     ]
     
+    reads_dir = reads_dir or READS_DIR
     for pattern in patterns:
-        files = glob.glob(os.path.join(READS_DIR, sample, pattern))
+        files = glob.glob(os.path.join(reads_dir, sample, pattern))
         if files:
             return files[0]
     
     raise FileNotFoundError(
         f"No read file found for sample '{sample}' with read number {read_num}. "
-        f"Searched in {os.path.join(READS_DIR, sample)} for patterns: {patterns}"
+        f"Searched in {os.path.join(reads_dir, sample)} for patterns: {patterns}"
     )
 
 # =============================================================================

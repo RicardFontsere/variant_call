@@ -62,10 +62,11 @@ abyss_trim: 0
 # =============================================================================
 # RNA-seq differential expression (rules 13-14, target `de_all`)
 # =============================================================================
-# Reads are expected to be already downloaded, one pair per sample, named
-# {sample}_1.fastq.gz and {sample}_2.fastq.gz. The sample names are what the
+# Reads are expected to be already downloaded.
+# One directory per sample (symlinks are fine), holding {name}_1.fq.gz and
+# {name}_2.fq.gz, like reads_dir. The directory names are the sample names the
 # design files below must refer to.
-rna_reads_dir: "[RNAseq fastq directory]"
+rna_reads_dir: "[RNAseq reads directory]"
 rna_genome: "[Genome fasta the transcriptome is extracted from]"
 rna_gff: "[GFF annotation matching rna_genome]"
 
