@@ -56,7 +56,7 @@ rule rna_multiqc:
     One MultiQC report over the fastp json files of all samples.
     """
     input:
-        expand(os.path.join(RESULTS_DIR, "13_rnaseq", "qc", "{sample}.json"), sample=RNA_SAMPLES)
+        lambda wildcards: expand(os.path.join(RESULTS_DIR, "13_rnaseq", "qc", "{sample}.json"), sample=rna_samples())
     output:
         os.path.join(RESULTS_DIR, "13_rnaseq", "qc", "multiqc_report.html")
     params:
@@ -181,7 +181,7 @@ rule salmon_compile:
     file and the columns can simply be pasted together.
     """
     input:
-        sf = expand(os.path.join(RESULTS_DIR, "13_rnaseq", "salmon", "{sample}", "quant.sf"), sample=RNA_SAMPLES)
+        sf = lambda wildcards: expand(os.path.join(RESULTS_DIR, "13_rnaseq", "salmon", "{sample}", "quant.sf"), sample=rna_samples())
     output:
         counts = os.path.join(RESULTS_DIR, "13_rnaseq", "salmon", "salmonCountNumReads.txt"),
         tpm = os.path.join(RESULTS_DIR, "13_rnaseq", "salmon", "salmonTPM.txt"),

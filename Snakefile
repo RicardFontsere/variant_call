@@ -51,6 +51,16 @@ RNA_SAMPLES = sorted(
 RNA_SAMPLE_RE = "|".join(re.escape(s) for s in RNA_SAMPLES) or "(?!)"
 
 
+def rna_samples(wildcards=None):
+    """RNA_SAMPLES for the rules that gather over all samples; an empty list
+    would otherwise only surface as an IndexError inside salmon_compile."""
+    if not RNA_SAMPLES:
+        raise ValueError(
+            f"No RNA-seq samples found in rna_reads_dir={RNA_READS_DIR!r}. It must "
+            "be an existing directory holding one subdirectory per sample.")
+    return RNA_SAMPLES
+
+
 def get_batch_map(reads_dir):
     """sample -> sequencing run (parent dir of the resolved symlink target)."""
     return {
