@@ -81,7 +81,7 @@ rule rna_transcriptome:
     features, -w writes the spliced exons).
     """
     input:
-        genome = RNA_GENOME,
+        genome = REFERENCE,
         gff = RNA_GFF
     output:
         fasta = os.path.join(RESULTS_DIR, "13_rnaseq", "reference", "transcriptome.fa")
@@ -92,15 +92,14 @@ rule rna_transcriptome:
     log:
         os.path.join(RESULTS_DIR, "logs", "13_rnaseq", "transcriptome.log")
     envmodules:
-        "SAMtools/1.18-GCC-12.3.0",
-        "gffread"
+        "SAMtools/1.18-GCC-12.3.0"
     shell:
         """
         mkdir -p $(dirname {output.fasta}) $(dirname {log})
         # gffread is much faster with a genome index next to the fasta. Only
         # built if absent, writing it would restamp the index the DNA rules use.
         [ -f {input.genome}.fai ] || samtools faidx {input.genome}
-        gffread -E -w {output.fasta} -g {input.genome} {input.gff} &> {log}
+        {SOFTWARE_DIR}/gffread -E -w {output.fasta} -g {input.genome} {input.gff} &> {log}
         """
 
 rule salmon_index:
@@ -110,7 +109,7 @@ rule salmon_index:
     """
     input:
         transcriptome = os.path.join(RESULTS_DIR, "13_rnaseq", "reference", "transcriptome.fa"),
-        genome = RNA_GENOME
+        genome = REFERENCE
     output:
         index_dir = directory(os.path.join(RESULTS_DIR, "13_rnaseq", "reference", "salmon_index"))
     params:

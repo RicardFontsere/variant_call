@@ -27,10 +27,8 @@ FL_SAMPLES = [s for s in SAMPLES if config["female_pattern"] in s]
 # --- RNA-seq differential expression (rules 13-14) ---------------------------
 # Only used by the `de_all` target; the variant calling rules never read them.
 RNA_READS_DIR = config.get("rna_reads_dir", "")
-RNA_GENOME = config.get("rna_genome", "")
 RNA_GFF = config.get("rna_gff", "")
 RNA_ANNOTATION = config.get("rna_annotation", "")
-RNA_TRIM_FRONT = config.get("rna_trim_front", 12)
 DE_INPUT_DIR = config.get("de_input_dir", "")
 DE_ANALYSES = config.get("de_analyses", [])
 DE_FDR = config.get("de_fdr", 0.05)
@@ -177,4 +175,5 @@ rule all:
 #        os.path.join(RESULTS_DIR, "11_kmer_coverage", "blast", "ymers_blast.out"),
 #        os.path.join(RESULTS_DIR, "11_kmer_coverage", "blast", "wmers_blast.out"),
         os.path.join(RESULTS_DIR, "12_hetero", "heterozygosity", "heterozygosity.done"),
-        os.path.join(RESULTS_DIR, "13_rnaseq", "salmon", "salmonCountNumReads.txt")
+        os.path.join(RESULTS_DIR, "13_rnaseq", "salmon", "salmonCountNumReads.txt"),
+        os.path.join(DE_DIR, "{analysis}", "{analysis}_DE_results.txt", analysis=DE_ANALYSES)
