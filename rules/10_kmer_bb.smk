@@ -77,19 +77,11 @@ rule make_sexspecific_fasta:
 rule bbduk_sexspecific:
     """
     Use BBDuk to extract reads containing sex-specific k-mers from the
-    STANDARD trimmed FASTQs of 01_trimming (see the module header: not the
-    _kmer.fq.gz reads, which are cropped by 15 bp at the 5' end).
-    Runs per sample per sex. outm = matched reads for assembly.
+    STANDARD trimmed FASTQs of 01_trimming 
 
-    mm=f: BBDuk masks the middle base of every reference k-mer by default,
-    which accepts a read carrying a different base at that position. The
-    k-mers here were called by exact set membership, so the match must be
-    exact too - a middle-base mismatch is a different k-mer, and one that
-    step 06 may well have assigned to the other sex.
+    mm=f forces BBDuk to match the 31-mers prefectly, not a single mismatch tolerated. 
 
-    rcomp=t is BBDuk's default and is stated explicitly: the KMC databases
-    behind these k-mers are both-strand, so a read may carry either
-    orientation.
+    rcomp=t KMC databases are canonical (both orientations)
     """
     input:
         r1 = os.path.join(RESULTS_DIR, "01_trimmed", "{sample}_1.fq.gz"),

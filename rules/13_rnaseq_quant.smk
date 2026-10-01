@@ -11,10 +11,7 @@
 
 rule rna_fastp:
     """
-    Trim the RNA-seq reads. The flags reproduce the Trimmomatic settings that
-    were used before: HEADCROP:12 -> --trim_front, SLIDINGWINDOW:4:15 ->
-    --cut_right, MINLEN:36 -> --length_required. Adapters are detected from the
-    reads instead of being read from adapters.fasta.
+    Trim the reads and produce QC reports.
     """
     input:
         # ancient(): keeps a re-sync of the raw reads from re-running everything,
@@ -28,8 +25,6 @@ rule rna_fastp:
         r2 = temp(os.path.join(RESULTS_DIR, "13_rnaseq", "trimmed", "{sample}_2.fq.gz")),
         html = os.path.join(RESULTS_DIR, "13_rnaseq", "qc", "{sample}.html"),
         json = os.path.join(RESULTS_DIR, "13_rnaseq", "qc", "{sample}.json")
-    params:
-        trim_front = RNA_TRIM_FRONT
     resources:
         cpus_per_task=10,
         mem_mb_per_cpu=3200,
@@ -47,12 +42,6 @@ rule rna_fastp:
             -o {output.r1} \
             -O {output.r2} \
             --detect_adapter_for_pe \
-            --trim_front1 {params.trim_front} \
-            --trim_front2 {params.trim_front} \
-            --cut_right \
-            --cut_right_window_size 4 \
-            --cut_right_mean_quality 15 \
-            --length_required 36 \
             --thread {resources.cpus_per_task} \
             --html {output.html} \
             --json {output.json} \

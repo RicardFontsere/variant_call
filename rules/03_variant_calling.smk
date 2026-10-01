@@ -272,13 +272,14 @@ rule filter_snps:
         vcf = temp(os.path.join(RESULTS_DIR, "03_variants", "filtered_sites.vcf")),
         idx = temp(os.path.join(RESULTS_DIR, "03_variants", "filtered_sites.vcf.idx"))
     params:
-        QD = config["gatk_snp_filters"]["QD"],
-        QUAL = config["gatk_snp_filters"].get("QUAL", 30.0),
-        MQ = config["gatk_snp_filters"]["MQ"],
-        FS = config["gatk_snp_filters"]["FS"],
-        SOR = config["gatk_snp_filters"]["SOR"],
-        MQRankSum_low = config["gatk_snp_filters"]["MQRankSum_low"],
-        ReadPosRankSum_low = config["gatk_snp_filters"]["ReadPosRankSum_low"]
+        # float() so JEXL always gets e.g. 60.0, never 60 (int literal -> NumberFormatException)
+        QD = float(config["gatk_snp_filters"]["QD"]),
+        QUAL = float(config["gatk_snp_filters"].get("QUAL", 30.0)),
+        MQ = float(config["gatk_snp_filters"]["MQ"]),
+        FS = float(config["gatk_snp_filters"]["FS"]),
+        SOR = float(config["gatk_snp_filters"]["SOR"]),
+        MQRankSum_low = float(config["gatk_snp_filters"]["MQRankSum_low"]),
+        ReadPosRankSum_low = float(config["gatk_snp_filters"]["ReadPosRankSum_low"])
     resources:
         cpus_per_task=1,
         mem_mb_per_cpu=8000,
@@ -294,22 +295,14 @@ rule filter_snps:
         mkdir -p $(dirname {output.vcf})
         mkdir -p $(dirname {log})
 
-        # 1. SNPs only, straight off the raw joint-called VCF
+        # 1. SNPs only
         gatk SelectVariants \
             -R {input.ref} \
             -V {input.vcf} \
             --select-type-to-include SNP \
             -O {output.vcf}.snps.vcf 2> {log}
 
-        # 2. Annotate the FILTER column with the config thresholds
-        #
-        # JEXL warns once per record per rank-sum filter when the annotation is
-        # absent (hom-var sites have no ref reads to rank, so MQRankSum and
-        # ReadPosRankSum are legitimately missing). The site still PASSes that
-        # filter -- GATK defaults to --missing-values-evaluate-as-failing false
-        # -- so the warnings are noise, but at ~2 per record they reached 22 GB
-        # on a 120M-record callset. Drop them; everything else reaches the log,
-        # and a GATK failure still propagates through pipefail.
+        # 2. Annotate FILTER column (JexlEngine missing-annotation warnings dropped)
         gatk VariantFiltration \
             -R {input.ref} \
             -V {output.vcf}.snps.vcf \
@@ -323,14 +316,13 @@ rule filter_snps:
             --filter-name "ReadPosRankSum_low_filter" --filter-expression "ReadPosRankSum < {params.ReadPosRankSum_low}" 2>&1 \
             | ( grep -v 'JexlEngine' || true ) >> {log}
 
-        # 3. Keep only sites that PASS every filter, then index
+        # 3. Keep PASS sites only, then index
         bcftools view -f PASS {output.vcf}.marked.vcf -Ov -o {output.vcf} 2>> {log}
         gatk IndexFeatureFile -I {output.vcf} 2>> {log}
 
         rm -f {output.vcf}.snps.vcf {output.vcf}.snps.vcf.idx \
               {output.vcf}.marked.vcf {output.vcf}.marked.vcf.idx
         """
-
 
 # =============================================================================
 # GENOTYPE-LEVEL GQ EXTRACTION (for threshold inspection)

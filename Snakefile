@@ -169,5 +169,5 @@ rule all:
 #        os.path.join(RESULTS_DIR, "11_kmer_coverage", "filtered", "ymers.assoc"),
 #        os.path.join(RESULTS_DIR, "11_kmer_coverage", "blast", "ymers_blast.out"),
 #        os.path.join(RESULTS_DIR, "11_kmer_coverage", "blast", "wmers_blast.out"),
-        os.path.join(RESULTS_DIR, "12_hetero", "heterozygosity", "heterozygosity.done")
-
+        os.path.join(RESULTS_DIR, "12_hetero", "heterozygosity", "heterozygosity.done"),
+        os.path.join(RESULTS_DIR, "13_rnaseq", "salmon", "salmonCountNumReads.txt")
