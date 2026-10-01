@@ -27,12 +27,15 @@ FL_SAMPLES = [s for s in SAMPLES if config["female_pattern"] in s]
 # --- RNA-seq differential expression (rules 13-14) ---------------------------
 # Only used by the `de_all` target; the variant calling rules never read them.
 RNA_READS_DIR = config.get("rna_reads_dir", "")
-RNA_GENOME = config.get("rna_genome", "")
+# Defaults to the DNA reference: the transcriptome is cut from the same assembly
+RNA_GENOME = config.get("rna_genome") or config["reference"]
 RNA_GFF = config.get("rna_gff", "")
 RNA_ANNOTATION = config.get("rna_annotation", "")
 RNA_TRIM_FRONT = config.get("rna_trim_front", 12)
 DE_INPUT_DIR = config.get("de_input_dir", "")
 DE_ANALYSES = config.get("de_analyses", [])
+if isinstance(DE_ANALYSES, str):  # de_analyses: "name" instead of ["name"]
+    DE_ANALYSES = [DE_ANALYSES]
 DE_FDR = config.get("de_fdr", 0.05)
 DE_FILTERING = config.get("de_filtering", "fdr")
 DE_HEATMAPS = config.get("de_heatmaps", "yes")

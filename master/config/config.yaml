@@ -67,6 +67,8 @@ abyss_trim: 0
 # {name}_2.fq.gz, like reads_dir. The directory names are the sample names the
 # design files below must refer to.
 rna_reads_dir: "[RNAseq reads directory]"
+# Genome the transcriptome is cut from; leave out to use `reference`. Its
+# sequence names must match the first column of rna_gff.
 rna_genome: "[Genome fasta the transcriptome is extracted from]"
 rna_gff: "[GFF annotation matching rna_genome]"
 

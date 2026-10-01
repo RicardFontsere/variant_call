@@ -79,6 +79,10 @@ rule rna_transcriptome:
     """
     Extract the mRNA sequences from the genome with gffread (-E cleans up the
     features, -w writes the spliced exons).
+
+    NCBI GFFs prefix the feature IDs with their type (rna-XM_040335786.1,
+    gene-LOC120...). The prefix is stripped so the transcript names are the
+    plain accessions used by the annotation table (gid column).
     """
     input:
         genome = RNA_GENOME,
@@ -100,7 +104,9 @@ rule rna_transcriptome:
         # gffread is much faster with a genome index next to the fasta. Only
         # built if absent, writing it would restamp the index the DNA rules use.
         [ -f {input.genome}.fai ] || samtools faidx {input.genome}
-        gffread -E -w {output.fasta} -g {input.genome} {input.gff} &> {log}
+        gffread -E -w {output.fasta}.tmp -g {input.genome} {input.gff} &> {log}
+        sed -E 's/^>(rna|gene)-/>/' {output.fasta}.tmp > {output.fasta}
+        rm -f {output.fasta}.tmp
         """
 
 rule salmon_index:
