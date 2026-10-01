@@ -108,6 +108,29 @@ rule rna_transcriptome:
         rm -f {output.fasta}.tmp
         """
 
+rule rna_annotation:
+    """
+    Transcript annotation table for edgeR (gene name, product, chromosome,
+    position, length), read from the GFF and the transcriptome. Only built
+    when rna_annotation is not set in the config.
+    """
+    input:
+        gff = RNA_GFF,
+        fasta = os.path.join(RESULTS_DIR, "13_rnaseq", "reference", "transcriptome.fa")
+    output:
+        os.path.join(RESULTS_DIR, "13_rnaseq", "reference", "transcript_annotation.tsv")
+    resources:
+        cpus_per_task=1,
+        mem_mb_per_cpu=4000,
+        runtime=30
+    log:
+        os.path.join(RESULTS_DIR, "logs", "13_rnaseq", "annotation.log")
+    shell:
+        """
+        mkdir -p $(dirname {log})
+        python {SCRIPTS_DIR}/make_rna_annotation.py {input.gff} {input.fasta} {output} &> {log}
+        """
+
 rule salmon_index:
     """
     Decoy-aware index: the genome is appended to the transcriptome so that reads

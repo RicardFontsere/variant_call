@@ -28,7 +28,9 @@ FL_SAMPLES = [s for s in SAMPLES if config["female_pattern"] in s]
 # Only used by the `de_all` target; the variant calling rules never read them.
 RNA_READS_DIR = config.get("rna_reads_dir", "")
 RNA_GFF = config.get("rna_gff", "")
-RNA_ANNOTATION = config.get("rna_annotation", "")
+# Unset: built from rna_gff by rule rna_annotation
+RNA_ANNOTATION = config.get("rna_annotation") or os.path.join(
+    RESULTS_DIR, "13_rnaseq", "reference", "transcript_annotation.tsv")
 DE_INPUT_DIR = config.get("de_input_dir", "")
 DE_ANALYSES = config.get("de_analyses", [])
 if isinstance(DE_ANALYSES, str):  # de_analyses: "name" instead of ["name"]

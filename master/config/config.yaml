@@ -71,13 +71,17 @@ rna_reads_dir: "[RNAseq reads directory]"
 # sequence names as the reference fasta. The transcriptome is cut from it.
 rna_gff: "[GFF annotation matching reference]"
 
-# Transcript annotation, tab separated, one line per transcript, with the
-# columns: gid, gname, gproduct, chr, chr_id, start, end, length.
-# The effective length is added by the pipeline from the Salmon output.
-rna_annotation: "[Transcript annotation table]"
+# Transcript annotation (gid, gname, gproduct, chr, chr_id, start, end,
+# length). Built from rna_gff by the pipeline; set this only to use a table
+# of your own instead, with those columns, tab separated.
+#rna_annotation: "[Transcript annotation table]"
 
-# Directory holding {analysis}_design.txt and {analysis}_matrix.txt, and the
-# analyses to run (one edgeR run each)
+# Your experimental design, which the pipeline cannot guess. For each
+# analysis <A> listed in de_analyses (one edgeR run each), de_input_dir holds:
+#   <A>_design.txt  sample <tab> group, one line per sample; the sample names
+#                   are the directory names in rna_reads_dir
+#   <A>_matrix.txt  model_coefficients <tab> one column per contrast, one row
+#                   per group with its weight (1 / -1 / 0)
 de_input_dir: "[DE design directory]"
 de_analyses: ["[analysis name]"]
 
